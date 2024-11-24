@@ -5,12 +5,12 @@
         "name": "Reproduce Paper",
         "type": "debugpy",
         "request": "launch",
-        "program": "${workspaceFolder}/learning_to_play/main.py",
+        "program": "${workspaceFolder}//main.py",
         "console": "integratedTerminal",
         "env": {
-          "PYTHONPATH": "${workspaceFolder}/learning_to_play"
+          "PYTHONPATH": "${workspaceFolder}/"
         },
-        "cwd": "${workspaceFolder}/learning_to_play",
+        "cwd": "${workspaceFolder}/",
         "justMyCode": true
       }
     ]

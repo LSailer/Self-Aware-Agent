@@ -15,7 +15,7 @@ from tdw_client import TDW_Client
 import signal
 import os
 import random
-SELECTED_BUILD = ':\Users\mrowca\Desktop\world\one_world.exe'
+SELECTED_BUILD = r':\Users\mrowca\Desktop\world\one_world.exe'
 from collections import namedtuple
 #from curiosity.data import flex_environment_utils, generate_grouping, old_assets_query_result_example
 import old_assets_query_result_example
