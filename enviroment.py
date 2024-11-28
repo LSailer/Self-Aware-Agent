@@ -65,6 +65,7 @@ class TDWClientEnvironment(Environment):
         self.environment_pid = None
 
     def reset(self, *round_info):
+        print("Resetting environment...")
         self.nn_frames = 0
         self.round_info = round_info
         # Load the scene
@@ -77,11 +78,13 @@ class TDWClientEnvironment(Environment):
             {"$type": "send_rigidbodies", "frequency": "always"},
             {"$type": "send_bounds", "frequency": "always"}
         ]
-        self.controller.communicate(commands)
+        print("Sending commands to controller...")
+        resp = self.controller.communicate(commands)
+        print("Received response from controller.")
         # Update avatar's position and forward vector
         self._observe_world()
         return self._observe_world()
-    
+        
     def _observe_world(self):
         # Capture images and other data from the environment
         resp = self.controller.communicate([])
