@@ -1,17 +1,24 @@
 {
-    "version": "0.2.0",
-    "configurations": [
-      {
-        "name": "Reproduce Paper",
-        "type": "debugpy",
-        "request": "launch",
-        "program": "${workspaceFolder}//main.py",
-        "console": "integratedTerminal",
-        "env": {
-          "PYTHONPATH": "${workspaceFolder}/"
-        },
-        "cwd": "${workspaceFolder}/",
-        "justMyCode": true
-      }
-    ]
-  }
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python Debugger: Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Reproduce Paper",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}//main.py",
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/"
+      },
+      "cwd": "${workspaceFolder}/",
+      "justMyCode": true
+    }
+  ]
+}

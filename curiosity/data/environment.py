@@ -96,6 +96,7 @@ HDF5_NAMES = [{'DisplayDepth' : 'depths'}, {'GetIdentity' : 'objects'}, {'Images
 
 class Environment(object):
     def __init__(self):
+        self.controller = Controller()
         raise NotImplementedError()
 
     def reset(self):
