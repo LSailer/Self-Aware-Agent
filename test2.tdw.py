@@ -10,6 +10,9 @@ c = Controller()
 a = FirstPersonAvatar()
 c.add_ons.append(a)
 c.communicate([TDWUtils.create_empty_room(12, 12),
+               {"$type": "set_screen_size",
+                           "width": 1024,
+                           "height": 768 },
                Controller.get_add_object(model_name="rh10",
                                          position={"x": 2, "y": 0, "z": 2},
                                          object_id=Controller.get_unique_id())])
