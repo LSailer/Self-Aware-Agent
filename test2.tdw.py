@@ -9,7 +9,7 @@ A minimal example of a first-person avatar.
 c = Controller()
 a = FirstPersonAvatar()
 c.add_ons.append(a)
-c.communicate([TDWUtils.create_empty_room(12, 12),
+c.communicate([TDWUtils.create_empty_room(10, 10),
                {"$type": "set_screen_size",
                            "width": 1024,
                            "height": 768 },

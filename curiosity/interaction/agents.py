@@ -31,56 +31,46 @@ class TelekineticMagicianAgent(Agent):
     def __init__(self,
             compute_settings,
             stored_params,
-            model_params,
             **kwargs):
-        for k_ in ['model_params']:
-            setattr(self, k_, eval(k_))
-        self.network = model_params['func'](self.model_params)
-        self.policy = self.network['policy']
-        shape_needed = [1] + self.network['inputs']['action_sample'].get_shape().as_list()[1:]
-        self.dummy_action = np.zeros(shape_needed, dtype = np.float32)
-        self.num_needed = {k_ : self.network['holders'][k_].get_shape().as_list()[1] for k_ in ['images1', 'action', 'action_post']}
+        # Initialization logic
+        super().__init__(compute_settings, stored_params, **kwargs)
+        self.compute_settings = compute_settings
+        self.stored_params = stored_params
+        # Additional initializations specific to this agent
 
-    def act(self, sess, history):
-        _holders = self.network['holders']
-        feed_dict = {_holders['train_indicator'] : 0., _holders['action_sample'] : self.dummy_action}
-        if history is not None:
-            recent_history = {k_ : history[k_][-self.num_needed[k_]:] for k_ in ['images1', 'action', 'action_post']}
-            sufficient_inputs = not any([any([_input is None for _input in _v]) for _v in recent_history.values()])
-            if sufficient_inputs:
-                recent_history = {k_ : np.array([v_]) for k_, v_ in recent_history.items()}
-                feed_dict.update({_holders[k_] : recent_history[k_] for k_ in recent_history})
-                #for f_ in feed_dict.values():
-                #    print(type(f_))
-                policy_output = sess.run(self.network['policy'], feed_dict = feed_dict)
-                action_chosen = policy_output.pop('action_chosen')
-                return action_chosen, policy_output
-        action_chosen = sess.run(self.network['policy']['random_alternative'], feed_dict = feed_dict)
-        return action_chosen, {'reward' : 0.}
+    def act(self,
+            sess,
+            history):
+        '''
+        Determine the next action for the agent.
+        
+        Args:
+            sess: TensorFlow session.
+            history: Historical interaction data.
 
-    def get_train_targets(self):
-        return self.network['train_targets']
+        Returns:
+            Action choice.
+        '''
+        # TODO: Implement logic for selecting the next action. Passe die act-Methode so an, dass sie Entscheidungen auch basierend auf der Kommunikation mit anderen Agenten trifft.
+        # Implement logic for selecting the next action
+        action = None
+        return action
 
-    def get_signals_and_variables(self):
-        return self.network['signals_and_variables']
+    def update(self,
+               reward,
+               new_state):
+        '''
+        Update the agent's internal state or learning parameters.
 
-    def get_update_holders(self):
-        return self.network['holders']
-
-    def get_all_holders(self):
-        return self.network['holders']
-
-class RandomAgent(Agent):
-    def __init__(self,
-            compute_settings,
-            stored_params,
-            seed,
-            action_dim,
-            lower_bound,
-            upper_bound,
-            **kwargs):
-        self.rng = np.random.RandsomState(seed = self.seed)
-
-    def act(self, sess, history):
-        return self.rng.uniform(self.lower_bound, self.upper_bound, \
-                self.action_dim), {}
+        Args:
+            reward: Reward received from the environment.
+            new_state: The new state of the environment after the action.
+        '''
+        # Implement update logic, e.g., updating internal models or strategies
+        pass
+    def communicate(self, other_agent):
+        # TODO: Implement communication logic Informationen mit anderen Agenten auszutauschen
+        shared_info = {'position': self.position, 'goal': self.current_goal}
+        return shared_info
+    
+#TODO: Erstelle eine neue Klasse MultiAgentEnvironment, die die Interaktionen zwischen mehreren Agenten koordiniert.

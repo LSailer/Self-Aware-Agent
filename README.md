@@ -1,5 +1,7 @@
 # Self-Aware-Agent
 
+## Install Conda
+conda create -n tdw_env python=3.8
 
 
 ## Acknowledgements
