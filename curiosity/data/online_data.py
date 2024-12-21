@@ -3,7 +3,7 @@ A data provider for online training
 '''
 
 import copy, threading
-import environment
+import src.environment as environment
 import six.moves.queue as queue
 import numpy as np
 
