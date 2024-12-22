@@ -1,4 +1,5 @@
 import pybullet as p
+import pybullet_data
 import torch
 import numpy as np
 from models import WorldModel, SelfModel
@@ -8,12 +9,16 @@ import matplotlib.pyplot as plt
 
 def run_simulation():
     """
-    Runs the simulation using the WorldModel and SelfModel to guide the agent's actions.
+    Runs the simulation with adjusted Newtonian physics for better agent movement.
     """
     # Setup environment
     plane_id, wall_ids = setup_environment()
     ball_start_pos, cube_start_pos = randomize_positions()
     sphere_id, cube_id = setup_objects(ball_start_pos, cube_start_pos)
+
+    # Adjust dynamics for improved Newtonian physics
+    p.changeDynamics(sphere_id, -1, mass=1.0, lateralFriction=0.3, restitution=0.0, linearDamping=0.0, angularDamping=0.0)
+    p.changeDynamics(cube_id, -1, mass=1.0, lateralFriction=0.3, restitution=0.0, linearDamping=0.0, angularDamping=0.0)
 
     # Initialize models and optimizers
     state_dim = 6
@@ -28,11 +33,11 @@ def run_simulation():
     # Define actions
     actions = {
         "forward": [1, 0.0, 0.0],
-        "backward": [-0.5, 0.0, 0.0],
-        "left": [0.0, -0.5, 0.0],
-        "right": [0.0, 0.5, 0.0],
-        "rotate_left": [0.0, 0.0, -0.25],
-        "rotate_right": [0.0, 0.0, 0.25],
+        "backward": [-1, 0.0, 0.0],
+        "left": [0.0, -1, 0.0],
+        "right": [0.0, 1, 0.0],
+        "rotate_left": [0.0, 0.0, -0.5],
+        "rotate_right": [0.0, 0.0, 0.5],
     }
 
     # Simulation loop
@@ -67,7 +72,9 @@ def run_simulation():
         if "rotate" in best_action_key:
             p.resetBaseVelocity(sphere_id, angularVelocity=[0, 0, best_action[2]])
         else:
-            p.applyExternalForce(sphere_id, -1, best_action, [0, 0, 0], p.WORLD_FRAME)
+            force_scale = 10.0  # Scale forces for more significant movement
+            best_action_scaled = [force_scale * val for val in best_action]
+            p.applyExternalForce(sphere_id, -1, best_action_scaled, [0, 0, 0], p.WORLD_FRAME)
 
         # Apply force to cube
         cube_force = [-best_action[0], -best_action[1], 0.0]

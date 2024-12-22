@@ -1,5 +1,10 @@
-conda install conda-forge::tensorflow
 
-conda install conda-forge::pybullet
-conda install conda-forge::matplotlib
-conda install conda-forge::torch
+conda create -n self_aware_agent python=3.10
+
+conda activate self_aware_agent
+
+
+conda install conda-forge::pybullet -y
+conda install conda-forge::matplotlib -y
+#https://pytorch.org/get-started/locally/ 
+conda install pytorch::pytorch torchvision torchaudio -c pytorch -y
