@@ -2,10 +2,11 @@ import torch
 import numpy as np
 from models import WorldModel, SelfModel
 import matplotlib.pyplot as plt
+from torchvision import transforms
 
 class CuriosityDrivenAgent:
     def __init__(self, state_dim, action_dim, hidden_dim, actions):
-        self.world_model = WorldModel(state_dim + action_dim, hidden_dim, state_dim)  # Fix input size
+        self.world_model = WorldModel(64 * 64 * 3 + action_dim, hidden_dim, 64 * 64 * 3)  # Adjust input size for images
         self.self_model = SelfModel(state_dim + action_dim, hidden_dim, 1)  # Fix input size
         self.actions = actions
         self.optimizer_world = torch.optim.Adam(self.world_model.parameters(), lr=0.001)
@@ -14,6 +15,15 @@ class CuriosityDrivenAgent:
         self.history_buffer = []
         self.world_losses = []
         self.self_losses = []
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Resize((64, 64)),
+            transforms.Normalize(mean=[0.5], std=[0.5])
+        ])
+
+    def preprocess_camera_image(self, image):
+        # Preprocess raw RGB camera image into tensor
+        return self.transform(image).view(-1)  # Flatten the image
 
     def update_belief(self, observation, action):
         input_tensor = torch.cat([self.belief, action], dim=-1).unsqueeze(0)
@@ -33,9 +43,9 @@ class CuriosityDrivenAgent:
             _, action_key = max(future_losses)
         return action_key, torch.tensor(self.actions[action_key], dtype=torch.float32)
 
-    def train_world_model(self, input_tensor, next_state):
-        predicted_next_state = self.world_model(input_tensor)
-        loss = torch.nn.functional.mse_loss(predicted_next_state, next_state)
+    def train_world_model(self, input_tensor, next_image):
+        predicted_next_image = self.world_model(input_tensor)
+        loss = torch.nn.functional.mse_loss(predicted_next_image, next_image)
 
         self.optimizer_world.zero_grad()
         loss.backward()
@@ -55,8 +65,8 @@ class CuriosityDrivenAgent:
         self.self_losses.append(loss.item())
         return loss.item()
 
-    def calculate_curiosity_reward(self, predicted_next_state, actual_next_state):
-        return torch.norm(predicted_next_state - actual_next_state, p=2).item()
+    def calculate_curiosity_reward(self, predicted_next_image, actual_next_image):
+        return torch.norm(predicted_next_image - actual_next_image, p=2).item()
 
     def observe_and_act(self, state, epsilon=0.1):
         action_key, action = self.choose_action(epsilon)
@@ -86,30 +96,17 @@ if __name__ == "__main__":
 
     agent = CuriosityDrivenAgent(state_dim, action_dim, hidden_dim, actions)
 
-    # Test update_belief
-    observation = torch.tensor([0.1, 0.2, 0.3, 0.4, 0.5, 0.6], dtype=torch.float32)
+    # Simulate camera image (dummy example)
+    camera_image = torch.rand(3, 480, 640)  # Dummy RGB image
+    processed_image = agent.preprocess_camera_image(camera_image)
+
+    # Test train_world_model with camera image
     action = torch.tensor([1, 0, 0], dtype=torch.float32)
-    agent.update_belief(observation, action)
-    print(f"Updated belief: {agent.belief}")
+    input_tensor = torch.cat([processed_image, action], dim=-1).unsqueeze(0)
+    next_image = torch.rand(64 * 64 * 3)  # Simulated next image
 
-    # Test choose_action
-    action_key, action_tensor = agent.choose_action(epsilon=0.1)
-    print(f"Chosen action: {action_key}, Action tensor: {action_tensor}")
-
-
-    for step in range(100):  # Beispielsweise 100 Schritte
-        action_key, action_tensor = agent.choose_action(epsilon=0.1)
-        input_tensor = torch.cat([observation, action_tensor], dim=-1).unsqueeze(0)
-        next_state = torch.tensor([0.2, 0.3, 0.4, 0.5, 0.6, 0.7], dtype=torch.float32).unsqueeze(0)
-
-        # Trainiere das World Model
-        world_loss = agent.train_world_model(input_tensor, next_state)
-
-        # Trainiere das Self Model
-        target_tensor = torch.tensor([1.0], dtype=torch.float32).unsqueeze(0)
-        self_loss = agent.train_self_model(input_tensor, target_tensor)
-
-        print(f"Step {step}, World Model Loss: {world_loss}, Self Model Loss: {self_loss}")
+    world_loss = agent.train_world_model(input_tensor, next_image)
+    print(f"World model loss: {world_loss}")
 
     # Plot losses
     agent.plot_losses()

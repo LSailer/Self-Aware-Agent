@@ -1,13 +1,8 @@
 {
-    "github.copilot.chat.experimental.codeGeneration.instructions": [
-
-
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestArgs": [
+        "tests"
     ],
-    "github.copilot.token": "YOUR-GITHUB-COPILOT-TOKEN",
-    "github.copilot.chat.experimental.temporalContext.enabled": true,
-    "github.copilot.preferredAccount": "LSailer",
-    "github.copilot.chat.experimental.generateTests.codeLens": true,
-    "github.copilot.chat.experimental.startDebugging.enabled": true,
-    "github.copilot.chat.scopeSelection": true,
-    "rainbow_csv.align_in_scratch_file": true
+    "python.testing.unittestEnabled": false,
+    "python.testing.autoTestDiscoverOnSaveEnabled": true
 }
