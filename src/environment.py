@@ -4,9 +4,21 @@ import random
 import numpy as np
 import cv2
 
+from video_recorder import VideoRecorder
+
 class Environment:
     def __init__(self):
         """Initialize the PyBullet environment."""
+
+        self.action_map = {
+            "forward": [50.0, 0, 0, 0],
+            "backward": [-50.0, 0, 0, 0],
+            "left": [0, -50.0, 0, 0],
+            "right": [0, 50.0, 0, 0],
+            "rotate_left": [0, 0, 0, 5.0],
+            "rotate_right": [0, 0, 0, -5.0],
+        }
+
         # Connect to the PyBullet simulator in GUI mode
         p.connect(p.GUI)
         # Add search path for default PyBullet assets
@@ -80,6 +92,9 @@ class Environment:
 
     def get_camera_image(self):
         """Capture the current camera view from the agent's perspective."""
+        #TODO     # Use `agent_pos` dynamically for the camera's eye and target positions.
+    # Ensure matrix updates when the agent moves.
+
         # Attach the camera to the agent
         camera_offset = [0.0, 0.0, 0.3]  # Camera is slightly above the agent's center
         agent_pos, agent_ori = p.getBasePositionAndOrientation(self.agent_id)
@@ -140,20 +155,9 @@ class Environment:
 
     def apply_action(self, action):
         """Apply an action to the agent."""
-        force_scale = 50.0  # Increased force for faster motion
-        angular_velocity_scale = 5.0
 
-        action_map = {
-            "forward": [force_scale, 0, 0, 0],
-            "backward": [-force_scale, 0, 0, 0],
-            "left": [0, -force_scale, 0, 0],
-            "right": [0, force_scale, 0, 0],
-            "rotate_left": [0, 0, 0, angular_velocity_scale],
-            "rotate_right": [0, 0, 0, -angular_velocity_scale]
-        }
-
-        if action in action_map:
-            force = action_map[action]
+        if action in self.action_map:
+            force = self.action_map[action]
             print(f"Action: {action}, Force: {force}")
 
             if force[0] or force[1]:
@@ -192,14 +196,13 @@ class Environment:
 
 import cv2
 
+# Example integration with Environment class
 if __name__ == "__main__":
     env = Environment()
     env.reset()
 
-    # Define video writer 
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
-    out = cv2.VideoWriter('camera_feed.mp4', fourcc, 20.0, (640, 480))  # 20 FPS, resolution 640x480
-
+    video_filename = "camera_feed.mp4"
+    recorder = VideoRecorder(filename=video_filename)
 
     try:
         for _ in range(200):  # Run simulation for 200 steps
@@ -210,14 +213,10 @@ if __name__ == "__main__":
             camera_image = env.get_camera_image()
 
             # Save the frame to the video
-            out.write(camera_image)
-
-            # Optional: Uncomment the line below to save as individual images
-            # cv2.imwrite(f'frame_{_}.png', camera_image)
+            recorder.write_frame(camera_image)
 
     finally:
         # Release resources
-        out.release()
+        recorder.close()
         env.close()
-        print("Camera feed saved as 'camera_feed.avi'")
 

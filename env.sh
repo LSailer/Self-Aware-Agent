@@ -10,3 +10,4 @@ conda install conda-forge::matplotlib -y
 conda install pytorch::pytorch torchvision torchaudio -c pytorch -y
 conda install conda-forge::opencv -y
 conda install pytest -y
+conda install -c conda-forge --name self_aware_agent tensorboard -y
