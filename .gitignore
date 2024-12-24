@@ -73,3 +73,6 @@ crashlytics-build.properties
 /[Aa]ssets/[Ss]treamingAssets/aa/*
 *.pyc
 .DS_Store
+
+runs/metrics/
+
