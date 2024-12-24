@@ -19,15 +19,15 @@ class Environment:
             baseMass=1.0,
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_SPHERE, radius=0.2),
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_SPHERE, radius=0.2, rgbaColor=[0, 1, 0, 1]),
-            
+            basePosition=[0, 0, 0.2]  # Start the agent on the ground
         )
         
-        # Initialize a red cube as the target (doubled size)
+        # Initialize a red cube as the target (larger size)
         self.cube_id = p.createMultiBody(
             baseMass=0.1,  # Set small mass to allow pushing
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_BOX, halfExtents=[0.4, 0.4, 0.4]),
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_BOX, halfExtents=[0.4, 0.4, 0.4], rgbaColor=[1, 0, 0, 1]),
-             # Start the cube on the ground
+            basePosition=[0.5, 0, 0.4]  # Start the cube directly in front of the agent
         )
 
         # Set gravity in the environment
@@ -38,7 +38,11 @@ class Environment:
 
         # Reset environment state
         self.agent_pos = np.array([0.0, 0.0, 0.2])
-        self.reset()
+        self.agent_orientation = [0, 0, 0, 1]  # Quaternion representing orientation
+            # Reduce friction for smoother motion
+        p.changeDynamics(self.plane_id, -1, lateralFriction=0.1)
+        # Reduce mass for the agent
+        p.changeDynamics(self.agent_id, -1, mass=0.5)
 
     def _create_room(self):
         """Create a 10x10 room with walls."""
@@ -68,28 +72,35 @@ class Environment:
         """Reset the environment to its initial state."""
         # Reset the agent's position
         self.agent_pos = np.array([0.0, 0.0, 0.2])
-        p.resetBasePositionAndOrientation(self.agent_id, [0, 0, 0.2], [0, 0, 0, 1])
+        self.agent_orientation = [0, 0, 0, 1]
+        p.resetBasePositionAndOrientation(self.agent_id, [0, 0, 0.2], self.agent_orientation)
         
         # Place the cube directly in front of the agent
         p.resetBasePositionAndOrientation(self.cube_id, [0.5, 0, 0.4], [0, 0, 0, 1])
 
     def get_camera_image(self):
         """Capture the current camera view from the agent's perspective."""
-        camera_offset = [0.0, 0.0, 0.3]  # Camera slightly above the agent
+        # Attach the camera to the agent
+        camera_offset = [0.0, 0.0, 0.3]  # Camera is slightly above the agent's center
         agent_pos, agent_ori = p.getBasePositionAndOrientation(self.agent_id)
 
-        # Adjust forward vector to align with agent direction
-        forward_vector = np.array([1, 0, 0])  # Fixed forward direction
+        # Compute forward vector based on agent orientation
+        forward_vector = p.getMatrixFromQuaternion(agent_ori)[:3]  # Extract forward vector
+        forward_vector = np.array(forward_vector)
+
         camera_eye = np.array(agent_pos) + np.array(camera_offset)
         camera_target = camera_eye + forward_vector * 2  # Adjust distance to look straight ahead
 
         # Set the camera view matrix
-        view_matrix = p.computeViewMatrix(
-            cameraEyePosition=camera_eye.tolist(),
-            cameraTargetPosition=camera_target.tolist(),
-            cameraUpVector=[0, 0, 1]
+        view_matrix =  p.computeViewMatrixFromYawPitchRoll(
+            cameraTargetPosition=agent_pos,
+            distance=1.0,
+            yaw=0,  # Adjust yaw for lateral view
+            pitch=-30,  # Tilt downward
+            roll=0,
+            upAxisIndex=2
         )
-    
+
         # Increase FOV for a wider view
         projection_matrix = p.computeProjectionMatrixFOV(
             fov=90, aspect=1.0, nearVal=0.1, farVal=10.0
@@ -103,39 +114,110 @@ class Environment:
         rgb_image = rgb_array[:, :, :3]  # Strip alpha channel
         return rgb_image
 
+    def get_state(self):
+        """Retrieve the current state of the environment."""
+        # Get agent's position, orientation, and velocity
+        agent_pos, agent_ori = p.getBasePositionAndOrientation(self.agent_id)
+        agent_vel, agent_ang_vel = p.getBaseVelocity(self.agent_id)
+
+        # Get cube's position and orientation
+        cube_pos, cube_ori = p.getBasePositionAndOrientation(self.cube_id)
+
+        # Compile the state information
+        state = {
+            "agent": {
+                "position": agent_pos,
+                "orientation": agent_ori,
+                "velocity": agent_vel,
+                "angular_velocity": agent_ang_vel,
+            },
+            "cube": {
+                "position": cube_pos,
+                "orientation": cube_ori,
+            }
+        }
+        return state
 
     def apply_action(self, action):
         """Apply an action to the agent."""
-        force_scale = 10.0  # Scale of the applied force
-        # Define possible actions and corresponding forces
-        action_map = {
-            "forward": [force_scale, 0, 0],
-            "backward": [-force_scale, 0, 0],
-            "left": [0, -force_scale, 0],
-            "right": [0, force_scale, 0]
-        }
-        if action in action_map:
-            velocity = action_map[action]
-            p.resetBaseVelocity(objectUniqueId=self.agent_id, linearVelocity=velocity)
+        force_scale = 50.0  # Increased force for faster motion
+        angular_velocity_scale = 5.0
 
+        action_map = {
+            "forward": [force_scale, 0, 0, 0],
+            "backward": [-force_scale, 0, 0, 0],
+            "left": [0, -force_scale, 0, 0],
+            "right": [0, force_scale, 0, 0],
+            "rotate_left": [0, 0, 0, angular_velocity_scale],
+            "rotate_right": [0, 0, 0, -angular_velocity_scale]
+        }
+
+        if action in action_map:
+            force = action_map[action]
+            print(f"Action: {action}, Force: {force}")
+
+            if force[0] or force[1]:
+                agent_pos, agent_ori = p.getBasePositionAndOrientation(self.agent_id)
+                forward_vector = p.getMatrixFromQuaternion(agent_ori)[:3]
+                force_vector = np.array(forward_vector) * force[0]
+                print(f"Agent Position: {agent_pos}, Orientation: {agent_ori}")
+                print(f"Force Vector: {force_vector}")
+
+                p.applyExternalForce(
+                    objectUniqueId=self.agent_id,
+                    linkIndex=-1,
+                    forceObj=force_vector.tolist(),
+                    posObj=agent_pos,
+                    flags=p.WORLD_FRAME
+                )
+
+            if force[3]:
+                print(f"Applying Torque: {force[3]}")
+                p.applyExternalTorque(
+                    objectUniqueId=self.agent_id,
+                    linkIndex=-1,
+                    torqueObj=[0, 0, force[3]],
+                    flags=p.WORLD_FRAME
+                )
     def step_simulation(self):
         """Step the simulation forward."""
         p.stepSimulation()
+        # Debug: Check the velocity of the agent after the simulation step
+        linear_velocity, angular_velocity = p.getBaseVelocity(self.agent_id)
+        print(f"Linear Velocity: {linear_velocity}, Angular Velocity: {angular_velocity}")
 
     def close(self):
         """Disconnect the simulation."""
         p.disconnect()
 
+import cv2
+
 if __name__ == "__main__":
     env = Environment()
     env.reset()
 
-    for _ in range(100):
-        env.apply_action("forward")
-        env.step_simulation()
-        camera_image = env.get_camera_image()
-        cv2.imshow("Agent Camera View", camera_image)
-        cv2.waitKey(10)
+    # Define video writer 
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
+    out = cv2.VideoWriter('camera_feed.mp4', fourcc, 20.0, (640, 480))  # 20 FPS, resolution 640x480
 
-    env.close()
-    cv2.destroyAllWindows()
+
+    try:
+        for _ in range(200):  # Run simulation for 200 steps
+            env.apply_action("forward")
+            env.step_simulation()
+            
+            # Get the camera image
+            camera_image = env.get_camera_image()
+
+            # Save the frame to the video
+            out.write(camera_image)
+
+            # Optional: Uncomment the line below to save as individual images
+            # cv2.imwrite(f'frame_{_}.png', camera_image)
+
+    finally:
+        # Release resources
+        out.release()
+        env.close()
+        print("Camera feed saved as 'camera_feed.avi'")
+
