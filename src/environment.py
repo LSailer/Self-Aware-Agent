@@ -158,14 +158,11 @@ class Environment:
 
         if action in self.action_map:
             force = self.action_map[action]
-            print(f"Action: {action}, Force: {force}")
 
             if force[0] or force[1]:
                 agent_pos, agent_ori = p.getBasePositionAndOrientation(self.agent_id)
                 forward_vector = p.getMatrixFromQuaternion(agent_ori)[:3]
                 force_vector = np.array(forward_vector) * force[0]
-                print(f"Agent Position: {agent_pos}, Orientation: {agent_ori}")
-                print(f"Force Vector: {force_vector}")
 
                 p.applyExternalForce(
                     objectUniqueId=self.agent_id,
@@ -176,7 +173,6 @@ class Environment:
                 )
 
             if force[3]:
-                print(f"Applying Torque: {force[3]}")
                 p.applyExternalTorque(
                     objectUniqueId=self.agent_id,
                     linkIndex=-1,
@@ -186,9 +182,6 @@ class Environment:
     def step_simulation(self):
         """Step the simulation forward."""
         p.stepSimulation()
-        # Debug: Check the velocity of the agent after the simulation step
-        linear_velocity, angular_velocity = p.getBaseVelocity(self.agent_id)
-        print(f"Linear Velocity: {linear_velocity}, Angular Velocity: {angular_velocity}")
 
     def close(self):
         """Disconnect the simulation."""

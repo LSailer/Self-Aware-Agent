@@ -72,10 +72,6 @@ class CuriosityDrivenAgent:
         Returns:
             float: Loss value.
         """
-        # Debugging: Check shapes
-        print(f"Processed image shape: {processed_image.shape}")
-        print(f"Action tensor shape: {action.shape}")
-        print(f"Next processed image shape: {next_processed_image.shape}")
 
         if processed_image.dim() != 4 or next_processed_image.dim() != 4 or action.dim() != 2:
             raise ValueError("Inputs to world model must have correct dimensions.")

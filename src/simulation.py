@@ -1,4 +1,3 @@
-import cv2
 import torch
 from environment import Environment
 from curiosity_driven_agent import CuriosityDrivenAgent
@@ -46,11 +45,8 @@ def run_simulation():
         raw_camera_image = env.get_camera_image()
 
 
-        print(f"Raw image shape: {raw_camera_image.shape}")  # Debug: Check the shape
-
         # Preprocess the camera image and store it in the agent
         processed_image = agent.preprocess_camera_image(raw_camera_image)  # Shape: (1, 3, 64, 64)
-        print(f"Processed image shape: {processed_image.shape}")  # Debug: Check the shape
         agent.last_processed_image = processed_image
 
         # Choose an action
@@ -77,31 +73,30 @@ def run_simulation():
         # Train the self-model
         target_tensor = torch.tensor([[curiosity_reward]], dtype=torch.float32)  # Shape: (batch_size, 1)
         self_loss = agent.train_self_model(next_processed_image, action_tensor, target_tensor)
-        print(f"Step: {step}")
-        print(f"Self loss: {self_loss}")
-        print(f"World loss: {world_loss}")
-        print(f"Curiosity reward: {curiosity_reward}")
 
-        # FIXME: Fix this bug to log the metrics and save the video
-        # # Save the frame to the video
-        # annotated_frame = video_recorder.annotate_frame(raw_camera_image, step, env.get_state()["agent"]["position"], curiosity_reward, self_loss)
-        # video_recorder.write_frame(annotated_frame)
+        # Annotate and write the frame
+        annotated_frame = video_recorder.annotate_frame(
+            raw_camera_image, step, curiosity_reward, self_loss
+        )
+        video_recorder.write_frame(annotated_frame)
 
-        # log_simulation_metrics(
-        #         logger=logger,
-        #         step=step,
-        #         env=env,
-        #         action_type=action_key,
-        #         action_vector=action_vector,
-        #         curiosity_reward=curiosity_reward,
-        #         world_loss=world_loss,
-        #         self_loss=self_loss
-        #     )
+        log_simulation_metrics(
+                logger=logger,
+                step=step,
+                env=env,
+                action_type=action_key,
+                action_vector=action_array,
+                curiosity_reward=curiosity_reward,
+                world_loss=world_loss,
+                self_loss=self_loss
+            )
         
 
     # Release resources
     video_recorder.close()
     env.close()
+    logger.plot_metrics()
+
     print("Simulation finished and video saved.")
 
 if __name__ == "__main__":

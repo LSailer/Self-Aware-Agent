@@ -1,11 +1,15 @@
 import csv
 from collections import deque
-from torch.utils.tensorboard import SummaryWriter
+import os
+from matplotlib import pyplot as plt
+import numpy as np
+import torch
 
 class MetricLogger:
-    def __init__(self, log_file="metrics_log.csv", tensorboard_log_dir="runs/metrics"):
-        self.log_file = log_file
+    def __init__(self, log_dir="logs"):
+        self.log_dir = log_dir
         self.metrics = deque(maxlen=100)  # Store recent metrics for trend analysis
+        os.makedirs(log_dir, exist_ok=True)
         self.fields = [
             "Step",
             "Position_X",
@@ -26,12 +30,15 @@ class MetricLogger:
             "Reward_Trend"
         ]
         self._init_csv()
-        # Initialize TensorBoard writer
-        self.writer = SummaryWriter(log_dir=tensorboard_log_dir)
+        self.steps = []
+        self.rewards = []
+        self.self_losses = []
+        self.world_losses = []
+        self.actions = []
 
     def _init_csv(self):
         """Initialize the CSV file with headers."""
-        with open(self.log_file, mode="w", newline="") as f:
+        with open(os.path.join(self.log_dir, "metrics_log.csv"), mode="w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=self.fields)
             writer.writeheader()
         
@@ -73,27 +80,53 @@ class MetricLogger:
             "Reward_Trend": reward_trend,
         }
 
-        with open(self.log_file, mode="a", newline="") as f:
+        with open(os.path.join(self.log_dir, "metrics_log.csv"), mode="a", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=self.fields)
             writer.writerow(log_entry)
 
-        # Log scalar metrics to TensorBoard
-        self.writer.add_scalar("Curiosity_Reward", curiosity_reward, step)
-        self.writer.add_scalar("Reward_Trend", reward_trend, step)
-        self.writer.add_scalar("World_Loss", world_loss, step)
-        self.writer.add_scalar("Self_Loss", self_loss, step)
+        # Store metrics
+        self.steps.append(step)
+        self.rewards.append(curiosity_reward)
+        self.self_losses.append(self_loss)
+        self.world_losses.append(world_loss)
+        self.actions.append(action_type)
 
-        # Log histograms for actions and rewards
-        self.writer.add_histogram("Actions/Action_Vector", action_vector, step)
-        self.writer.add_histogram("Rewards/Curiosity_Reward", curiosity_reward, step)
 
-        # Subcategory for agent state
-        self.writer.add_scalar("Agent/Position_X", position[0], step)
-        self.writer.add_scalar("Agent/Position_Y", position[1], step)
-        self.writer.add_scalar("Agent/Position_Z", position[2], step)
-        self.writer.add_scalar("Agent/Velocity_X", velocity[0], step)
-        self.writer.add_scalar("Agent/Velocity_Y", velocity[1], step)
-        self.writer.add_scalar("Agent/Velocity_Z", velocity[2], step)
+    def plot_metrics(self):
+        """Generate and save plots for metrics."""
+        # Reward Plot
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.steps, self.rewards, label="Reward", color="blue")
+        plt.xlabel("Steps")
+        plt.ylabel("Reward")
+        plt.title("Reward over Steps")
+        plt.legend()
+        plt.grid()
+        plt.savefig(os.path.join(self.log_dir, "reward_plot.png"))
+        plt.close()
+
+        # Loss Plot
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.steps, self.self_losses, label="Self Loss", color="green")
+        plt.plot(self.steps, self.world_losses, label="World Loss", color="red")
+        plt.xlabel("Steps")
+        plt.ylabel("Loss")
+        plt.title("Losses over Steps")
+        plt.legend()
+        plt.grid()
+        plt.savefig(os.path.join(self.log_dir, "loss_plot.png"))
+        plt.close()
+
+        # Action Histogram
+        plt.figure(figsize=(10, 6))
+        plt.hist(self.actions, bins=range(len(set(self.actions)) + 1), align="left", rwidth=0.8, color="purple")
+        plt.xlabel("Action Key")
+        plt.ylabel("Frequency")
+        plt.title("Action Histogram")
+        plt.xticks(range(len(set(self.actions))), sorted(set(self.actions)))
+        plt.grid(axis="y")
+        plt.savefig(os.path.join(self.log_dir, "action_histogram.png"))
+        plt.close()
 
     def close(self):
         """Handle any cleanup if necessary."""
