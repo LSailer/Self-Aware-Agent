@@ -34,7 +34,7 @@ class CuriosityDrivenAgent:
         image_tensor = self.transform(image)  # Output shape: (C, H, W)
         return image_tensor.unsqueeze(0)  # Add batch dimension: (1, C, H, W)
 
-    def choose_action(self, epsilon=0.1):
+    def choose_action(self, epsilon=0.6):
         """
         Choose an action based on the self-model's predicted reward or random exploration.
         Args:
@@ -50,14 +50,14 @@ class CuriosityDrivenAgent:
         if np.random.rand() < epsilon:
             # Random exploration
             action_key = np.random.choice(list(self.actions.keys()))
-
-        # Exploitation: Predict future rewards
-        future_rewards = []
-        for action_key, action in self.actions.items():
-            action_tensor = torch.tensor(action, dtype=torch.float32).unsqueeze(0)  # Shape: (1, action_dim)
-            predicted_reward = self.self_model(self.last_processed_image, action_tensor)
-            future_rewards.append((predicted_reward.item(), action_key))
-        _, action_key = max(future_rewards)  # Maximize predicted reward
+        else:
+            # Exploitation: Predict future rewards
+            future_rewards = []
+            for action_key, action in self.actions.items():
+                action_tensor = torch.tensor(action, dtype=torch.float32).unsqueeze(0)  # Shape: (1, action_dim)
+                predicted_reward = self.self_model(self.last_processed_image, action_tensor)
+                future_rewards.append((predicted_reward.item(), action_key))
+            _, action_key = max(future_rewards)  # Maximize predicted reward
 
         action_array = self.actions[action_key]
         return action_key, action_array
