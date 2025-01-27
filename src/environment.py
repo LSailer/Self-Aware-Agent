@@ -27,6 +27,7 @@ def setup_environment():
         {"pos": [wall_length / 2, 0, wall_height / 2], "size": [wall_thickness / 2, wall_length / 2, wall_height / 2]},
     ]
 
+<<<<<<< Updated upstream
     wall_ids = []
     for wall in walls:
         wall_id = p.createMultiBody(
@@ -34,10 +35,60 @@ def setup_environment():
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_BOX, halfExtents=wall["size"]),
             basePosition=wall["pos"],
             baseMass=0  # Static walls
+=======
+        # Action Map
+        self.action_map = {
+            "forward":      [50.0,   0,   0,  0],
+            "backward":     [-50.0,  0,   0,  0],
+            "left":         [0, -50.0,   0,  0],
+            "right":        [0,  50.0,   0,  0],
+            "rotate_left":  [0,   0,   0,  5.0],
+            "rotate_right": [0,   0,   0, -5.0],
+            "stop":         [0,    0,   0,   0],  
+        }
+    
+        # Connect to the PyBullet simulator in GUI mode: p.GUI else: p.DIRECT
+        p.connect(p.GUI)
+        p.setTimeStep(1./30.)
+        p.setRealTimeSimulation(0)
+        # Add search path for default PyBullet assets
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
+        print(pybullet_data.getDataPath())
+
+        # Load a flat plane
+        self.plane_id = p.loadURDF("plane.urdf")
+
+        p.changeVisualShape(
+            objectUniqueId=self.plane_id,
+            linkIndex=-1,
+            rgbaColor=[0.5, 0.5, 0.5, 1.0],  # z.B. hellgrau
+>>>>>>> Stashed changes
         )
         wall_ids.append(wall_id)
 
+<<<<<<< Updated upstream
     return plane_id, wall_ids
+=======
+        # Initialize agent as a green sphere
+        self.agent_id = p.createMultiBody(
+            baseMass=3,
+            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_SPHERE, radius=0.2),
+            baseVisualShapeIndex=p.createVisualShape(p.GEOM_SPHERE, radius=0.2, rgbaColor=[0, 1, 0, 1]),
+            basePosition=self.agent_start_pos  # <-- Agent spawn
+        )
+        
+        # Initialize a red cube as the target
+        self.cube_id = p.createMultiBody(
+            baseMass=0.1,  # Set small mass to allow pushing
+            baseCollisionShapeIndex=p.createCollisionShape(
+                p.GEOM_BOX, halfExtents=[0.4, 0.4, 0.4]
+            ),
+            baseVisualShapeIndex=p.createVisualShape(
+                p.GEOM_BOX, halfExtents=[0.4, 0.4, 0.4], rgbaColor=[1, 0, 0, 1]
+            ),
+            basePosition=self.cube_start_pos  # <-- Cube spawn
+        )
+>>>>>>> Stashed changes
 
 def randomize_positions():
     """

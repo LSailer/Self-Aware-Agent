@@ -1,10 +1,39 @@
 import pybullet as p
 import pybullet_data
 import torch
+<<<<<<< Updated upstream
 import numpy as np
 from models import WorldModel, SelfModel
 from environment import setup_environment, randomize_positions, setup_objects
 import matplotlib.pyplot as plt
+=======
+from environment import Environment
+from curiosity_driven_agent import CuriosityDrivenAgent
+from video_recorder import VideoRecorder
+from metric_logger import MetricLogger
+
+MAX_STEPS = 3000
+
+def log_simulation_metrics(logger, step, env, action_type, action_vector, curiosity_reward, world_loss, self_loss):
+    state = env.get_state()
+    agent_position = state["agent"]["position"]
+    agent_velocity = state["agent"]["velocity"]
+    agent_orientation = state["agent"]["orientation"]
+    agent_angular_velocity = state["agent"]["angular_velocity"]
+
+    logger.log_metrics(
+        step=step,
+        position=agent_position,
+        velocity=agent_velocity,
+        orientation=agent_orientation,
+        angular_velocity=agent_angular_velocity,
+        action_type=action_type,
+        action_vector=action_vector,
+        curiosity_reward=curiosity_reward,
+        world_loss=world_loss,
+        self_loss=self_loss
+    )
+>>>>>>> Stashed changes
 
 
 def run_simulation():
