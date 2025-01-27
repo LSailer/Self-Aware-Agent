@@ -4,7 +4,7 @@ from curiosity_driven_agent import CuriosityDrivenAgent
 from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
 
-MAX_STEPS = 1200
+MAX_STEPS = 100
 
 def log_simulation_metrics(logger, step, env, action_type, action_vector, curiosity_reward, world_loss, self_loss):
     state = env.get_state()
@@ -50,7 +50,7 @@ def run_simulation():
         agent.last_processed_image = processed_image
 
         # Choose an action
-        action_key, action_array = agent.choose_action(epsilon=0.2)  # Choose action
+        action_key, action_array = agent.choose_action(epsilon=0.6)  # Choose action
         print(f"Step {step}: Chose action '{action_key}' with vector: {action_array}")
         action_tensor = torch.tensor(action_array, dtype=torch.float32).unsqueeze(0) 
 

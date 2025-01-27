@@ -56,7 +56,7 @@ class CuriosityDrivenAgent:
             for action_key, action in self.actions.items():
                 action_tensor = torch.tensor(action, dtype=torch.float32).unsqueeze(0)  # Shape: (1, action_dim)
                 predicted_reward = self.self_model(self.last_processed_image, action_tensor)
-                # print(f"Aktion={action_key},  predicted_reward={predicted_reward.item()}")
+                print(f"Aktion={action_key},  predicted_reward={predicted_reward.item()}")
                 future_rewards.append((predicted_reward.item(), action_key))
             _, action_key = max(future_rewards)  # Maximize predicted reward
 
