@@ -1,135 +1,220 @@
 import torch
+import torch.nn.functional as F
 import numpy as np
-from models import WorldModel, SelfModel
+from models import VAE, RNNModel, SelfModel # Import new models
 import matplotlib.pyplot as plt
 from torchvision import transforms as T
+from collections import deque, namedtuple
+import random
+
+from utility import visualize_vae_reconstruction
+
+# Define the Experience tuple for the replay buffer
+Experience = namedtuple('Experience',
+                        ('raw_image', 'action_key', 'action_array', 'reward', 'next_raw_image', 'done'))
 
 class CuriosityDrivenAgent:
-    def __init__(self, actions):
-        self.world_model = WorldModel()  # Adjust input size for images
-        self.self_model = SelfModel()  
-        self.optimizer_world = torch.optim.Adam(self.world_model.parameters(), lr=0.001)
-        self.optimizer_self = torch.optim.Adam(self.self_model.parameters(), lr=0.001)
-        self.history_buffer = []
-        self.world_losses = []
-        self.self_losses = []
-        self.actions = actions
+    def __init__(self, actions, latent_dim=32, rnn_hidden_dim=256, buffer_size=10000, batch_size=64, device='cpu'):
+        """
+        Agent implementing VAE, RNN, and Self Model for curiosity-driven exploration.
 
-        # Define the transformation pipeline
+        Args:
+            actions (dict): Mappings from action keys (str) to action vectors (list/np.array).
+            latent_dim (int): Dimensionality of the VAE latent space z.
+            rnn_hidden_dim (int): Hidden dimension for the RNN model.
+            buffer_size (int): Maximum size of the replay buffer.
+            batch_size (int): Size of batches sampled from the replay buffer for training.
+            device (str): 'cpu' or 'cuda'.
+        """
+        self.actions = actions
+        self.action_dim = len(list(actions.values())[0])
+        self.latent_dim = latent_dim
+        self.rnn_hidden_dim = rnn_hidden_dim
+        self.device = device
+        self.batch_size = batch_size
+
+        # --- Initialize Models ---
+        self.vae = VAE(latent_dim=latent_dim).to(self.device)
+        self.rnn_model = RNNModel(latent_dim=latent_dim, action_dim=self.action_dim, rnn_hidden_dim=rnn_hidden_dim).to(self.device)
+        self.self_model = SelfModel(latent_dim=latent_dim, rnn_hidden_dim=rnn_hidden_dim, action_dim=self.action_dim).to(self.device)
+
+        # --- Initialize Optimizers ---
+        self.optimizer_vae = torch.optim.Adam(self.vae.parameters(), lr=0.001)
+        self.optimizer_rnn = torch.optim.Adam(self.rnn_model.parameters(), lr=0.001)
+        self.optimizer_self = torch.optim.Adam(self.self_model.parameters(), lr=0.001)
+
+        # --- Replay Buffer ---
+        self.replay_buffer = deque(maxlen=buffer_size)
+
+        # --- Image Transformation ---
+        # Transformation pipeline for VAE input/output
         self.transform = T.Compose([
-            T.ToPILImage(),  # Convert numpy array to PIL Image
-            T.Resize((64, 64)),  # Resize to 64x64
-            T.ToTensor(),  # Convert to tensor and normalize to [0, 1]
+            T.ToPILImage(),         # Convert numpy array (H, W, C) to PIL Image
+            T.Resize((64, 64)),     # Resize to 64x64
+            T.ToTensor(),           # Convert to tensor and normalize to [0, 1]
         ])
 
-    def preprocess_camera_image(self, image):
-        """
-        Preprocess raw RGB camera image into tensor with the correct shape for the SelfModel.
-        Args:
-            image (numpy.ndarray): Raw RGB image (H, W, C).
-        Returns:
-            torch.Tensor: Preprocessed image tensor of shape (1, C, H, W).
-        """
-        # Apply transformations: resize, normalize, and add batch dimension
-        image_tensor = self.transform(image)  # Output shape: (C, H, W)
-        return image_tensor.unsqueeze(0)  # Add batch dimension: (1, C, H, W)
+        # --- Agent State ---
+        self.current_z = None       # Current latent state z_t
+        self.current_h = None       # Current RNN hidden state (h_t, c_t) - Tuple
 
-    def choose_action(self, epsilon=0.6):
+    def _preprocess_image(self, raw_image):
+        """ Preprocess a single raw image for VAE """
+        # Add batch dimension, apply transform, move to device
+        return self.transform(raw_image).unsqueeze(0).to(self.device) # (1, C, H, W)
+
+    def encode_image(self, raw_image):
+        """ Encodes a raw image into latent state z using the VAE """
+        processed_image = self._preprocess_image(raw_image)
+        with torch.no_grad(): # No need to track gradients during encoding for action selection/storage
+            mu, logvar = self.vae.encode(processed_image)
+            z = self.vae.reparameterize(mu, logvar)
+        return z # Shape: (1, LatentDim)
+
+    def reset_hidden_state(self):
+        """ Resets the RNN hidden state (at the start of an episode) """
+        # Initialize hidden state for a batch size of 1
+        self.current_h = self.rnn_model.init_hidden(batch_size=1, device=self.device)
+
+    def choose_action(self, epsilon=0.2):
         """
         Choose an action based on the self-model's predicted reward or random exploration.
-        Args:
-            epsilon (float): Probability of choosing a random action for exploration.
-        Returns:
-            action_key (str): Selected action name.
-            action (torch.Tensor): Action tensor.
-        """
+        Uses the current latent state z_t and RNN hidden state h_t.
 
-        if self.last_processed_image.shape[1:] != (3, 64, 64):  # Ensure proper dimensions
-            raise ValueError(f"Incorrect image shape: {self.last_processed_image.shape}")
+        Args:
+            epsilon (float): Probability of choosing a random action.
+        Returns:
+            tuple: (action_key, action_array)
+        """
+        if self.current_z is None or self.current_h is None:
+            raise ValueError("Agent state (z or h) not initialized. Call encode_image and reset_hidden_state first.")
 
         if np.random.rand() < epsilon:
             # Random exploration
             action_key = np.random.choice(list(self.actions.keys()))
         else:
-            # Exploitation: Predict future rewards
-            future_rewards = []
-            for action_key, action in self.actions.items():
-                action_tensor = torch.tensor(action, dtype=torch.float32).unsqueeze(0)  # Shape: (1, action_dim)
-                predicted_reward = self.self_model(self.last_processed_image, action_tensor)
-                # print(f"Aktion={action_key},  predicted_reward={predicted_reward.item()}")
-                future_rewards.append((predicted_reward.item(), action_key))
-            _, action_key = max(future_rewards)  # Maximize predicted reward
+            # Exploitation: Predict future rewards using SelfModel
+            self.self_model.eval() # Set self_model to evaluation mode
+            with torch.no_grad():
+                future_rewards = []
+                # Get the hidden state part 'h' from the tuple (h, c)
+                h_state_for_self_model = self.current_h[0] # Shape: (NumLayers, Batch=1, HiddenDim)
+
+                for key, val_array in self.actions.items():
+                    action_tensor = torch.tensor(val_array, dtype=torch.float32).unsqueeze(0).to(self.device) # (1, ActionDim)
+                    # Predict reward for taking this action given current z and h
+                    predicted_reward = self.self_model(self.current_z, h_state_for_self_model, action_tensor)
+                    future_rewards.append((predicted_reward.item(), key))
+
+            self.self_model.train() # Set back to training mode
+            if not future_rewards: # Handle empty case if needed
+                action_key = np.random.choice(list(self.actions.keys()))
+            else:
+                _, action_key = max(future_rewards) # Choose action predicted to yield highest reward
 
         action_array = self.actions[action_key]
-        return action_key, action_array
+        return action_key, np.array(action_array, dtype=np.float32)
 
-    def train_world_model(self, processed_image, action, next_processed_image):
+    def store_experience(self, raw_image, action_key, action_array, reward, next_raw_image, done):
+        """ Stores an experience tuple in the replay buffer """
+        # Note: We store raw images and re-process/encode them during training updates
+        # This is more memory intensive but avoids issues if the VAE changes during training
+        experience = Experience(raw_image, action_key, action_array, reward, next_raw_image, done)
+        self.replay_buffer.append(experience)
+
+    def calculate_curiosity_reward(self, predicted_next_z, actual_next_z):
         """
-        Train the world model to predict the next image state.
+        Calculate curiosity reward based on the RNN's prediction error in latent space.
         Args:
-            processed_image (torch.Tensor): Current image tensor of shape (batch_size, C, H, W).
-            action (torch.Tensor): Action tensor of shape (batch_size, action_dim).
-            next_processed_image (torch.Tensor): Target next image tensor of shape (batch_size, C, H, W).
+            predicted_next_z (torch.Tensor): RNN's prediction of z_{t+1} (Batch, LatentDim).
+            actual_next_z (torch.Tensor): VAE's encoding of the actual next image (Batch, LatentDim).
         Returns:
-            float: Loss value.
+            torch.Tensor: Curiosity reward tensor (Batch, 1).
         """
+        # Use Mean Squared Error in the latent space as the reward signal
+        # Higher error means higher curiosity reward
+        reward = F.mse_loss(predicted_next_z, actual_next_z.detach(), reduction='none').mean(dim=1) # Average MSE across latent dimensions
+        # Detach actual_next_z as it's the target
+        return reward.unsqueeze(1) # Shape: (Batch, 1)
 
-        if processed_image.dim() != 4 or next_processed_image.dim() != 4 or action.dim() != 2:
-            raise ValueError("Inputs to world model must have correct dimensions.")
-        
-        # Forward pass through the world model
-        predicted_next_image = self.world_model(processed_image, action)
+    def update_models(self, visualize=False, step=0):
+        """ Samples a batch from the replay buffer and updates VAE, RNN, and SelfModel """
+        if len(self.replay_buffer) < self.batch_size:
+            return None # Not enough samples to train yet
 
-        # Calculate the loss
-        loss = torch.nn.functional.mse_loss(predicted_next_image, next_processed_image)
+        # Sample a batch of experiences
+        experiences = random.sample(self.replay_buffer, self.batch_size)
+        batch = Experience(*zip(*experiences)) # Transpose the batch
 
-        # Optimize the world model
-        self.optimizer_world.zero_grad()
-        loss.backward()
-        self.optimizer_world.step()
-        return loss.item()
+        # --- Prepare Batch Data ---
+        # Convert raw images to tensors and encode with VAE
+        # Stack raw images and preprocess together for efficiency
+        raw_images_np = np.stack(batch.raw_image)
+        next_raw_images_np = np.stack(batch.next_raw_image)
 
-    def train_self_model(self, processed_image, action, target_reward):
-        """
-        Train the self model to predict the reward for a given state and action.
-        Args:
-            processed_image (torch.Tensor): Input image of shape (batch_size, channels, height, width).
-            action (torch.Tensor): Action tensor of shape (batch_size, action_dim).
-            target_reward (torch.Tensor): Ground truth reward tensor of shape (batch_size, 1).
-        Returns:
-            float: Loss value for training step.
-        """
-        # Validate input shapes (debugging step)
-        assert processed_image.dim() == 4, f"processed_image should be 4D, got {processed_image.shape}"
-        assert action.dim() == 2, f"action should be 2D, got {action.shape}"
-        assert target_reward.dim() == 2, f"target_reward should be 2D, got {target_reward.shape}"
+        processed_images = torch.stack([self.transform(img) for img in raw_images_np]).to(self.device)
+        processed_next_images = torch.stack([self.transform(img) for img in next_raw_images_np]).to(self.device)
 
-        # Forward pass through the self model
-        predicted_reward = self.self_model(processed_image, action)  # Shape: (batch_size, 1)
+        # Encode images to get z_t and z_{t+1}
+        mu_t, logvar_t = self.vae.encode(processed_images)
+        z_t = self.vae.reparameterize(mu_t, logvar_t) # (Batch, LatentDim)
 
-        # Calculate loss (Mean Squared Error)
-        loss = torch.nn.functional.mse_loss(predicted_reward, target_reward)
+        mu_t1, logvar_t1 = self.vae.encode(processed_next_images)
+        z_t1_actual = self.vae.reparameterize(mu_t1, logvar_t1) # (Batch, LatentDim) - This is the target for RNN
 
-        # Optimize the self model
+        # Convert actions and rewards to tensors
+        actions_array = np.stack(batch.action_array)
+        action_t = torch.tensor(actions_array, dtype=torch.float32).to(self.device) # (Batch, ActionDim)
+        # rewards_t = torch.tensor(batch.reward, dtype=torch.float32).unsqueeze(1).to(self.device) # External reward if used
+        # done_t = torch.tensor(batch.done, dtype=torch.float32).unsqueeze(1).to(self.device)
+
+        # --- 1. Update VAE ---
+        self.optimizer_vae.zero_grad()
+        recon_x, _, mu, logvar = self.vae(processed_images) # Pass current images through VAE
+        vae_loss_info = self.vae.loss_function(recon_x, processed_images, mu, logvar)
+        vae_loss = vae_loss_info['loss']
+        vae_loss.backward()
+        self.optimizer_vae.step()
+        # --- Periodically Visualize VAE ---
+        if visualize:
+            visualize_vae_reconstruction(processed_images, recon_x, step)
+
+        # --- 2. Update RNN Model ---
+        # We need the RNN hidden state. For simplicity in batch training without sequences,
+        # we initialize a hidden state for the batch.
+        # A more advanced implementation would store hidden states in the buffer or unroll sequences.
+        initial_hidden = self.rnn_model.init_hidden(self.batch_size, self.device)
+        self.optimizer_rnn.zero_grad()
+        # Predict z_{t+1} using the RNN
+        predicted_z_t1, _ = self.rnn_model(z_t.detach(), action_t, initial_hidden) # Detach z_t to stop gradients flowing back to VAE through RNN
+        # Calculate prediction loss (e.g., MSE)
+        rnn_loss = F.mse_loss(predicted_z_t1, z_t1_actual.detach()) # Target is the VAE encoding of next image
+        rnn_loss.backward()
+        self.optimizer_rnn.step()
+
+        # --- 3. Calculate Curiosity Reward for SelfModel Training ---
+        # Use the just-calculated predictions and actual values for the batch
+        with torch.no_grad(): # Reward calculation shouldn't affect gradients
+            curiosity_reward_batch = self.calculate_curiosity_reward(predicted_z_t1, z_t1_actual) # (Batch, 1)
+
+        # --- 4. Update Self Model ---
         self.optimizer_self.zero_grad()
-        loss.backward()
+        # Predict reward based on z_t, initial_hidden, and action_t
+        # Note: Using initial_hidden here is a simplification. Ideally, use the actual h_t if stored.
+        h_state_for_self_model = initial_hidden[0] # Get the h part of the tuple
+        predicted_reward = self.self_model(z_t.detach(), h_state_for_self_model.detach(), action_t) # Detach inputs
+        # Calculate loss against the calculated curiosity reward
+        self_loss = F.mse_loss(predicted_reward, curiosity_reward_batch.detach()) # Target is calculated curiosity
+        self_loss.backward()
         self.optimizer_self.step()
 
-        return loss.item()
+        # Return losses for logging
+        return {
+            'vae_loss': vae_loss.item(),
+            'vae_recon_loss': vae_loss_info['Reconstruction_Loss'].item(),
+            'vae_kld_loss': vae_loss_info['KLD'].item(),
+            'rnn_loss': rnn_loss.item(),
+            'self_loss': self_loss.item(),
+            'avg_curiosity_reward': curiosity_reward_batch.mean().item()
+        }
 
-    def calculate_curiosity_reward(self, predicted_next_image, actual_next_image):
-        """
-        Calculate the curiosity reward based on the difference between predicted and actual next images.
-        Args:
-            predicted_next_image (torch.Tensor): Predicted image tensor of shape (batch_size, C, H, W).
-            actual_next_image (torch.Tensor): Actual image tensor of shape (batch_size, C, H, W).
-        Returns:
-            float: The curiosity reward.
-        """
-        # Calculate the L2 norm (Euclidean distance) between the predicted and actual images
-        difference = predicted_next_image - actual_next_image
-        curiosity_reward = torch.norm(difference, p=2).item()  # Compute the L2 norm as a scalar value
-
-        max_norm = torch.sqrt(torch.tensor(predicted_next_image.numel()))  # Normalize by max possible norm
-        return (curiosity_reward / max_norm).item()
-    

@@ -113,7 +113,7 @@ class Environment:
         """Create a 10x10 room with walls."""
         wall_thickness = 0.2
         wall_height = 2.0
-        wall_length = 10
+        wall_length = 5
 
         # Define positions and sizes of walls
         walls = [

@@ -1,104 +1,153 @@
 import torch
 from environment import Environment
-from curiosity_driven_agent import CuriosityDrivenAgent
+from curiosity_driven_agent import CuriosityDrivenAgent # Agent now uses VAE/RNN
 from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
+import numpy as np
 
 MAX_STEPS = 1200
+BATCH_SIZE = 64 # Should match agent's batch_size
+UPDATE_EVERY_N_STEPS = 4 # How often to run model updates
+INTERACTION_DISTANCE_THRESHOLD = 0.8 # Example distance threshold for interaction
+EPSILON_GREEDY = 0.3 # Exploration rate
+def check_interaction(env, threshold):
+    """ Checks if the agent is close to any interactable object """
+    try:
+        agent_pos = np.array(env.get_state()["agent"]["position"])
+        cube_pos = np.array(env.get_state()["cube"]["position"])
+        cylinder_pos = np.array(env.get_state()["cylinder"]["position"])
 
-def log_simulation_metrics(logger, step, env, action_type, action_vector, curiosity_reward, world_loss, self_loss):
-    state = env.get_state()
-    agent_position = state["agent"]["position"]
-    agent_velocity = state["agent"]["velocity"]
-    agent_orientation = state["agent"]["orientation"]
-    agent_angular_velocity = state["agent"]["angular_velocity"]
+        dist_cube = np.linalg.norm(agent_pos - cube_pos)
+        dist_cylinder = np.linalg.norm(agent_pos - cylinder_pos)
 
-    logger.log_metrics(
-        step=step,
-        position=agent_position,
-        velocity=agent_velocity,
-        orientation=agent_orientation,
-        angular_velocity=agent_angular_velocity,
-        action_type=action_type,
-        action_vector=action_vector,
-        curiosity_reward=curiosity_reward,
-        world_loss=world_loss,
-        self_loss=self_loss
-    )
+        return (dist_cube < threshold) or (dist_cylinder < threshold)
+    except Exception as e:
+        print(f"Error checking interaction: {e}")
+        return False
 
 
 def run_simulation():
+    # Use CUDA if available
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
     # Initialize the environment
     env = Environment()
     env.reset()
 
-    # Initialize the agent
-    agent = CuriosityDrivenAgent(env.action_map)
+    # Initialize the agent with VAE/RNN
+    agent = CuriosityDrivenAgent(
+        actions=env.action_map,
+        latent_dim=32,         # Example latent dimension for VAE
+        rnn_hidden_dim=256,    # Example hidden dimension for RNN
+        buffer_size=50000,     # Example buffer size
+        batch_size=BATCH_SIZE,
+        device=device
+    )
 
     # Initialize the video recorder
-    video_recorder = VideoRecorder(filename="camera_feed.mp4")
+    video_recorder = VideoRecorder(filename="camera_feed_vae_rnn.mp4")
 
-    logger = MetricLogger()
+    # Initialize the metric logger
+    logger = MetricLogger() # Logger will be updated to handle interaction freq
 
+    # --- Simulation Loop ---
+    agent.reset_hidden_state() # Initialize RNN hidden state
+    raw_image = env.get_camera_image()
+    agent.current_z = agent.encode_image(raw_image) # Encode initial image
+
+    print("Starting simulation...")
     for step in range(MAX_STEPS):
-        # Get the current camera image
-        raw_camera_image = env.get_camera_image()
+        # 1. Choose action based on current z_t and h_t
+        action_key, action_array = agent.choose_action(epsilon=EPSILON_GREEDY) # Adjust epsilon as needed
 
-
-        # Preprocess the camera image and store it in the agent
-        processed_image = agent.preprocess_camera_image(raw_camera_image)  # Shape: (1, 3, 64, 64)
-        agent.last_processed_image = processed_image
-
-        # Choose an action
-        action_key, action_array = agent.choose_action(epsilon=0.2)  # Choose action
-        print(f"Step {step}: Chose action '{action_key}' with vector: {action_array}")
-        action_tensor = torch.tensor(action_array, dtype=torch.float32).unsqueeze(0) 
-
-        # Apply the action in the environment
+        # 2. Apply action and step environment
         env.apply_action(action_key)
         env.step_simulation()
+        done = False # Assuming non-terminating env for now, or add termination logic
 
-        # Get the next camera image
+        # 3. Get next state observation
         next_raw_image = env.get_camera_image()
-        next_processed_image = agent.preprocess_camera_image(next_raw_image)
 
-        # Train the world model
-        world_loss = agent.train_world_model(agent.last_processed_image, action_tensor, next_processed_image)
+        # 4. Store experience in replay buffer
+        # For simplicity, store external reward as 0, focus on curiosity
+        external_reward = 0.0
+        agent.store_experience(raw_image, action_key, action_array, external_reward, next_raw_image, done)
 
-        # Predict the next image using the world model
-        predicted_next_image = agent.world_model(agent.last_processed_image, action_tensor)
+        # 5. Update agent state (z_t and h_t) for the *next* step's action selection
+        # Encode the *next* image to get z_{t+1}
+        next_z = agent.encode_image(next_raw_image)
+        # Use the RNN to get the next hidden state h_{t+1} based on z_t, a_t, h_t
+        action_tensor = torch.tensor(action_array, dtype=torch.float32).unsqueeze(0).to(device)
+        with torch.no_grad():
+            _, next_h = agent.rnn_model(agent.current_z, action_tensor, agent.current_h)
 
-        # Calculate the curiosity reward
-        curiosity_reward = agent.calculate_curiosity_reward(predicted_next_image, next_processed_image)
+        # Update agent's current state for the next iteration
+        agent.current_z = next_z
+        agent.current_h = next_h
+        raw_image = next_raw_image # Roll over observation
 
-        # Train the self-model
-        target_tensor = torch.tensor([[curiosity_reward]], dtype=torch.float32)  # Shape: (batch_size, 1)
-        self_loss = agent.train_self_model(next_processed_image, action_tensor, target_tensor)
+        # 6. Perform model updates periodically
+        loss_dict = None
+        if step > BATCH_SIZE and step % UPDATE_EVERY_N_STEPS == 0:
+            loss_dict = agent.update_models(visualize=step % 1000 == 0, step=step) # Train VAE, RNN, SelfModel
 
-        # Annotate and write the frame
-        annotated_frame = video_recorder.annotate_frame(
-            raw_camera_image, step, curiosity_reward, self_loss
-        )
-        video_recorder.write_frame(annotated_frame)
+        # 7. Logging
+        if loss_dict:
+            # Check for interaction
+            is_interacting = check_interaction(env, INTERACTION_DISTANCE_THRESHOLD)
 
-        log_simulation_metrics(
-                logger=logger,
+            # Log metrics including interaction status
+            logger.log_metrics(
                 step=step,
-                env=env,
+                env=env, # Pass env to get state inside logger if needed, or pass state directly
                 action_type=action_key,
                 action_vector=action_array,
-                curiosity_reward=curiosity_reward,
-                world_loss=world_loss,
-                self_loss=self_loss
+                # Use logged average curiosity from the update step
+                curiosity_reward=loss_dict.get('avg_curiosity_reward', 0.0),
+                world_loss=loss_dict.get('rnn_loss', 0.0), # Use RNN loss as "world loss"
+                self_loss=loss_dict.get('self_loss', 0.0),
+                vae_loss=loss_dict.get('vae_loss', 0.0),
+                vae_kld_loss=loss_dict.get('vae_kld_loss', 0.0),
+                is_interacting=is_interacting # Pass interaction status
             )
-        
+            print(f"Step {step}: Action: {action_key}, VAE Loss: {loss_dict.get('vae_loss', 0):.4f}, RNN Loss: {loss_dict.get('rnn_loss', 0):.4f}, Self Loss: {loss_dict.get('self_loss', 0):.4f}, Curiosity: {loss_dict.get('avg_curiosity_reward', 0):.4f}, Interacting: {is_interacting}")
+        elif step % 100 == 0:
+            print(f"Step {step}: Action: {action_key}")
 
-    # Release resources
+
+        # 8. Video Recording (Annotate with available losses)
+        # Get latest losses from logger if not updated this step
+        current_rnn_loss = logger.world_losses[-1] if logger.world_losses else 0.0
+        current_self_loss = logger.self_losses[-1] if logger.self_losses else 0.0
+        current_curiosity = logger.rewards[-1] if logger.rewards else 0.0
+
+        try:
+            # Use next_raw_image for annotation as it's the result of the action
+            annotated_frame = video_recorder.annotate_frame(
+                next_raw_image, step, current_curiosity, current_self_loss # Pass relevant metrics
+            )
+            video_recorder.write_frame(annotated_frame)
+        except Exception as e:
+            print(f"Error annotating/writing frame at step {step}: {e}")
+
+
+        # Check for termination condition if applicable
+        # if done:
+        #     env.reset()
+        #     agent.reset_hidden_state()
+        #     raw_image = env.get_camera_image()
+        #     agent.current_z = agent.encode_image(raw_image)
+
+
+    # --- Cleanup ---
+    print("Simulation finished.")
     video_recorder.close()
     env.close()
-    logger.plot_metrics()
+    logger.plot_metrics() # Generate plots, including interaction frequency
 
-    print("Simulation finished and video saved.")
+    print("Logs and video saved.")
 
 if __name__ == "__main__":
     run_simulation()
+
