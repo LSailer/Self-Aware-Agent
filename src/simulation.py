@@ -13,11 +13,11 @@ from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
 
 # --- Constants ---
-MAX_STEPS = 500  # Reduced for initial testing
+MAX_STEPS = 5000  # Reduced for initial testing
 BATCH_SIZE = 32
 UPDATE_EVERY_N_STEPS = 4
 REPLAY_BUFFER_SIZE = 10000
-LEARNING_RATE_VAE = 0.0005
+LEARNING_RATE_VAE = 0.001
 LEARNING_RATE_RNN = 0.001
 LEARNING_RATE_SELF = 0.001
 LATENT_DIM = 32
@@ -30,7 +30,10 @@ EPSILON_END = 0.05  # End with less exploration
 EPSILON_DECAY = 30000 # Longer decay for epsilon
 INTERACTION_DISTANCE_THRESHOLD = 0.8 # For agent-agent interaction
 OBJECT_INTERACTION_THRESHOLD = 0.7 # For agent-object interaction (distance to object center)
-LOG_DIR = "logs/multi_agent_v2" # Changed log dir to avoid overwriting
+LOG_DIR = "logs/multi_agent_v3" # Changed log dir to avoid overwriting
+VAE_VISUALIZE_AFTER_STEPS= 100
+RNN_VISUALIZE_AFTER_STEPS=100
+USE_GUI =False
 
 # --- Replay Buffer ---
 Experience = namedtuple('Experience', (
@@ -60,7 +63,7 @@ def run_multi_agent_simulation():
     print(f"Using device: {device}")
 
     # Environment
-    env = Environment()
+    env = Environment(use_gui=USE_GUI)
     agent_ids = [env.agent_id_1, env.agent_id_2]
     action_map = env.action_map
     print(f"Agent IDs: {agent_ids}")
@@ -96,7 +99,10 @@ def run_multi_agent_simulation():
         learning_rate_self=LEARNING_RATE_SELF,
         epsilon_start=EPSILON_START,
         epsilon_end=EPSILON_END,
-        epsilon_decay=EPSILON_DECAY
+        epsilon_decay=EPSILON_DECAY,
+        vae_visualize_after_steps=VAE_VISUALIZE_AFTER_STEPS,
+        log_dir=LOG_DIR,
+        rnn_visualize_after_steps=RNN_VISUALIZE_AFTER_STEPS
     )
 
     # Logging & Video
@@ -108,7 +114,7 @@ def run_multi_agent_simulation():
     # Video recorders: Use the raw image from environment, not the transformed one for VAE
     recorders = [
         VideoRecorder(filename=os.path.join(LOG_DIR, f"agent_{i+1}_video.mp4"), 
-                     resolution=(480,640)) # Use original resolution for recording
+                     resolution=(480,640), fps=20) # Use original resolution for recording
         for i in range(NUM_AGENTS)
     ]
 
@@ -244,15 +250,19 @@ def run_multi_agent_simulation():
                     self_loss_2_ann = last_metrics_agent2.get('Self_Loss', 0.0)
 
             try:
+                # Annotate and write frame for agent 1
                 frame1_annotated = recorders[0].annotate_frame(obs_t_np_list[0].copy(), step, 
                                                              curiosity_reward_1_ann, self_loss_1_ann)
-                recorders[0].write_frame(frame1_annotated)
+                if frame1_annotated is not None:
+                    recorders[0].write_frame(frame1_annotated)
                 
+                # Annotate and write frame for agent 2
                 frame2_annotated = recorders[1].annotate_frame(obs_t_np_list[1].copy(), step, 
                                                              curiosity_reward_2_ann, self_loss_2_ann)
-                recorders[1].write_frame(frame2_annotated)
+                if frame2_annotated is not None:
+                    recorders[1].write_frame(frame2_annotated)
             except Exception as e:
-                print(f"Error annotating/writing frame at step {step}: {e}")
+                print(f"Error during video recording at step {step}: {e}")
                 print(f"  Frame 1 shape: {obs_t_np_list[0].shape if obs_t_np_list[0] is not None else 'None'}, dtype: {obs_t_np_list[0].dtype if obs_t_np_list[0] is not None else 'None'}")
                 print(f"  Frame 2 shape: {obs_t_np_list[1].shape if obs_t_np_list[1] is not None else 'None'}, dtype: {obs_t_np_list[1].dtype if obs_t_np_list[1] is not None else 'None'}")
         else:

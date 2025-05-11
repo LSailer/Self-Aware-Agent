@@ -35,6 +35,7 @@
             * Maintained rolling averages for all metrics
 
 ---
+---
 
 ##   Step 2: Multi-Agent Extension (Approach 2: Shared Core, Separate Heads) - **IN PROGRESS**
 
@@ -100,6 +101,17 @@
         * [X] **Self-Model Updates:**
             * [X] Trainiere $\Lambda^1$: Ziel ist der tatsächliche Fehler $L_1$ (Curiosity-Belohnung). Input für $\Lambda^1$ sind $z^1_t, h_t, a^1_t$.
             * [X] Trainiere $\Lambda^2$: Ziel ist der tatsächliche Fehler $L_2$ (Curiosity-Belohnung). Input für $\Lambda^2$ sind $z^2_t, h_t, a^2_t$.
+   * [X] **VAE Rekonstruktionsvisualisierung:**
+        * [X] Implementiere Aufruf von `visualize_vae_reconstruction` in `MultiAgentController.update_models` periodisch.
+        * [X] Stelle sicher, dass `utility.py` die `visualize_vae_reconstruction` Funktion enthält.
+        * [X] Konfiguriere `MultiAgentController`, um `log_dir` für das Speichern der Visualisierungen zu verwenden.
+        * [X] Übergebe `log_dir` von `simulation.py` an den `MultiAgentController`.
+   * [X] **RNN Vorhersagevisualisierung (World Model Latent Space):**
+        * [X] Erstelle `visualize_rnn_prediction` Funktion in `utility.py`.
+        * [X] Implementiere Aufruf von `visualize_rnn_prediction` in `MultiAgentController.update_models` periodisch für jeden Agenten.
+        * [X] Nutze den VAE-Decoder, um vorhergesagte latente Zustände des RNN in Bilder umzuwandeln.
+        * [X] Vergleiche die dekodierten RNN-Vorhersagen mit den tatsächlichen nächsten Frames.
+
 
 ###   E. Logging & Video Adaptation
 

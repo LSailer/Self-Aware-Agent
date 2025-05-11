@@ -6,7 +6,7 @@ import math
 
 
 class Environment:
-    def __init__(self):
+    def __init__(self, use_gui=False):
         """Initialize the PyBullet environment for two agents."""
         # -- Configure start positions --
         # Agent 1 (Green)
@@ -35,6 +35,7 @@ class Environment:
             "stop":         [0,    0,   0,   0],  
         }
 
+        self.use_gui = use_gui
 
         # Initialize PyBullet
         self._initialize_pybullet()
@@ -44,14 +45,18 @@ class Environment:
 
         # Set up dynamics
         self._setup_dynamics()
-
-
+        
+        
 
     def _initialize_pybullet(self) -> None:
         """Initialize PyBullet connection and basic settings."""
         try:
-            self.physics_client = p.connect(p.GUI)
-            print("Successfully connected to PyBullet GUI.")
+            if self.use_gui:
+                self.physics_client = p.connect(p.GUI)
+                print("Successfully connected to PyBullet GUI.")
+            else:
+                self.physics_client = p.connect(p.DIRECT)
+                print("Successfully connected to PyBullet DIRECT (no GUI).")
         except p.error as e:
             print(f"Could not connect to PyBullet GUI (might already be connected?): {e}")
             try:
@@ -201,7 +206,7 @@ class Environment:
             wall_visual_shape = p.createVisualShape(
                 shapeType=p.GEOM_BOX,
                 halfExtents=wall["size"],
-                rgbaColor=[0.6, 0.3, 0, 1]  # Brown
+                rgbaColor=[255, 255,255, 1]  # black
             )
             wall_collision_shape = p.createCollisionShape(
                 shapeType=p.GEOM_BOX,

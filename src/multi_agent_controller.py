@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -8,7 +9,7 @@ import random
 import math
 
 from models import VAE, RNNModel, SelfModel
-from utility import visualize_vae_reconstruction
+from utility import visualize_vae_reconstruction, visualize_rnn_prediction
 
 # --- Replay Buffer Definition ---
 Experience = namedtuple('Experience', (
@@ -42,7 +43,10 @@ class MultiAgentController:
                 # Epsilon Greedy
                 epsilon_start: float,
                 epsilon_end: float,
-                epsilon_decay: float):
+                epsilon_decay: float,
+                vae_visualize_after_steps: int = 1000,
+                rnn_visualize_after_steps: int = 1000,
+                log_dir: str = None):
         """
         Initialize the MultiAgentController.
 
@@ -101,6 +105,9 @@ class MultiAgentController:
         self.h_t = self.rnn_model.init_hidden(batch_size=1, device=self.device)
         # Current latent states (will be set externally or initialized here)
         self.z_t_all = [torch.zeros(1, self.latent_dim).to(self.device) for _ in range(self.num_agents)]
+        self.visualize_vae_after_steps = vae_visualize_after_steps
+        self.log_dir = log_dir
+        self.visualize_rnn_after_steps = rnn_visualize_after_steps
 
     def preprocess_observation(self, obs_np):
         """Applies transformation to a single NumPy observation."""
@@ -364,19 +371,50 @@ class MultiAgentController:
             loss_self2.backward()
             self.optimizer_self_models[1].step()
 
-        # Optional: VAE visualization after update
-        if current_step % 1000 == 0:  # Visualize every 1000 steps
+        # --- 5. Visualizations ---
+        # VAE visualization
+        if current_step % self.visualize_vae_after_steps == 0:  # Visualize every 1000 steps
             if obs_t_all.nelement() > 0:
                 self.vae.eval()
                 with torch.no_grad():
                     recon_x_all_vis, _, _, _ = self.vae(obs_t_all[:min(8*self.num_agents, obs_t_all.shape[0])])  # Take max 8 pairs
+                visualize_path = os.path.join(self.log_dir, "vae_reconstructions")
                 visualize_vae_reconstruction(obs_t_all[:min(8*self.num_agents, obs_t_all.shape[0])],
                                           recon_x_all_vis,
                                           current_step,
-                                          save_dir="logs/multi_agent/vae_reconstructions")
+                                          save_dir=visualize_path)
                 self.vae.train()
 
-        # --- 5. Return losses for logging ---
+        # RNN prediction visualization
+        if current_step % self.visualize_rnn_after_steps == 0 and current_step > 0:  # Different period for RNN viz
+            self.vae.eval()  # VAE decoder will be used in eval mode
+            
+            # Visualize for Agent 1
+            if obs_tp1_agent1_batch.nelement() > 0 and pred_z_tp1_1.nelement() > 0:
+                rnn_pred_save_dir = os.path.join(self.log_dir, "rnn_predictions")
+                visualize_rnn_prediction(
+                    actual_next_frames=obs_tp1_agent1_batch.cpu(),  # Ground truth o_{t+1} for agent 1
+                    rnn_predicted_latent_z=pred_z_tp1_1.detach().cpu(),  # RNN's z_{t+1} prediction for agent 1
+                    vae_decode_function=self.vae.decode,  # Pass the decode method
+                    step=current_step,
+                    agent_id=0,  # Agent ID for naming files
+                    save_dir=rnn_pred_save_dir
+                )
+            
+            # Visualize for Agent 2
+            if obs_tp1_agent2_batch.nelement() > 0 and pred_z_tp1_2.nelement() > 0:
+                rnn_pred_save_dir = os.path.join(self.log_dir, "rnn_predictions")
+                visualize_rnn_prediction(
+                    actual_next_frames=obs_tp1_agent2_batch.cpu(),  # Ground truth o_{t+1} for agent 2
+                    rnn_predicted_latent_z=pred_z_tp1_2.detach().cpu(),  # RNN's z_{t+1} prediction for agent 2
+                    vae_decode_function=self.vae.decode,
+                    step=current_step,
+                    agent_id=1,
+                    save_dir=rnn_pred_save_dir
+                )
+            self.vae.train()  # Set VAE back to train mode
+
+        # --- 6. Return losses for logging ---
         return {
             'vae_loss': vae_loss.item(),
             'vae_recon_loss': vae_loss_info['Reconstruction_Loss'].item(),
