@@ -8,6 +8,7 @@ class VAE(nn.Module):
         """
         Convolutional Variational Autoencoder (VAE).
         Encodes a 64x64 image into a latent vector z and decodes z back into an image.
+        In the multi-agent setting, processes batches containing images from both agents.
 
         Args:
             input_channels (int): Number of channels in the input image (e.g., 3 for RGB).
@@ -23,16 +24,14 @@ class VAE(nn.Module):
         for h_dim in hidden_dims:
             modules.append(
                 nn.Sequential(
-                    nn.Conv2d(in_channels, out_channels=h_dim, kernel_size=3, stride=2, padding=1),
+                    nn.Conv2d(in_channels, out_channels=h_dim, kernel_size=4, stride=2, padding=1),
                     nn.BatchNorm2d(h_dim),
                     nn.LeakyReLU())
             )
             in_channels = h_dim
 
         self.encoder = nn.Sequential(*modules)
-        # Calculate the flattened size after convolutions (assuming 64x64 input)
-        # 64 -> 32 -> 16 -> 8 -> 4. So final feature map size is 4x4
-        self.final_feature_map_size = 4
+        self.final_feature_map_size = 4  # 64 / (2^4) = 4
         self.flattened_size = hidden_dims[-1] * (self.final_feature_map_size ** 2)
 
         # Fully connected layers for mean and log variance
@@ -43,35 +42,34 @@ class VAE(nn.Module):
         modules = []
         self.decoder_input = nn.Linear(latent_dim, self.flattened_size)
 
-        hidden_dims.reverse() # Reverse for decoder [256, 128, 64, 32]
+        hidden_dims.reverse()  # Reverse for decoder [256, 128, 64, 32]
 
-        in_channels = hidden_dims[0] # Start with the last encoder hidden dim
-        # Start from the second element since the first is handled by decoder_input
-        for i in range(len(hidden_dims) - 1):
+        in_channels = hidden_dims[0]
+        for i in range(len(hidden_dims)):
+            out_channels_decoder = hidden_dims[i+1] if i < len(hidden_dims) - 1 else hidden_dims[-1]
             modules.append(
                 nn.Sequential(
-                    nn.ConvTranspose2d(in_channels, hidden_dims[i+1], kernel_size=3, stride=2, padding=1, output_padding=1),
-                    nn.BatchNorm2d(hidden_dims[i+1]),
+                    nn.ConvTranspose2d(in_channels, out_channels_decoder, kernel_size=4, stride=2, padding=1),
+                    nn.BatchNorm2d(out_channels_decoder),
                     nn.LeakyReLU())
             )
-            in_channels = hidden_dims[i+1]
+            in_channels = out_channels_decoder
 
         # Final layer to reconstruct the image
         modules.append(
             nn.Sequential(
-                nn.ConvTranspose2d(hidden_dims[-1], hidden_dims[-1], kernel_size=3, stride=2, padding=1, output_padding=1),
-                nn.BatchNorm2d(hidden_dims[-1]),
-                nn.LeakyReLU(),
-                nn.Conv2d(hidden_dims[-1], out_channels=input_channels, kernel_size=3, padding=1),
-                nn.Sigmoid()) # Use Sigmoid for output normalized to [0, 1]
+                nn.ConvTranspose2d(hidden_dims[-1], input_channels, kernel_size=3, stride=1, padding=1),
+                nn.Sigmoid())
         )
 
         self.decoder = nn.Sequential(*modules)
-        hidden_dims.reverse() # Reverse back for consistency if needed elsewhere
+        hidden_dims.reverse()  # Reverse back for consistency
 
     def encode(self, x):
         """
-        Encodes the input image into latent space parameters (mean and log variance).
+        Encodes the input image batch into latent space parameters.
+        In multi-agent setting, x contains images from both agents.
+
         Args:
             x (torch.Tensor): Input image tensor (Batch, Channels, Height, Width).
         Returns:
@@ -85,14 +83,16 @@ class VAE(nn.Module):
 
     def decode(self, z):
         """
-        Decodes the latent vector z back into an image.
+        Decodes the latent vector batch z back into images.
+        In multi-agent setting, z contains latent vectors from both agents.
+
         Args:
             z (torch.Tensor): Latent vector (Batch, LatentDim).
         Returns:
             torch.Tensor: Reconstructed image tensor (Batch, Channels, Height, Width).
         """
         result = self.decoder_input(z)
-        result = result.view(-1, self.encoder[-1][0].out_channels, self.final_feature_map_size, self.final_feature_map_size) # Reshape to match decoder input
+        result = result.view(-1, self.encoder[-1][0].out_channels, self.final_feature_map_size, self.final_feature_map_size)
         result = self.decoder(result)
         return result
 
@@ -112,8 +112,10 @@ class VAE(nn.Module):
     def forward(self, x):
         """
         Forward pass through the VAE (encode, reparameterize, decode).
+        In multi-agent setting, processes batches containing images from both agents.
+
         Args:
-            x (torch.Tensor): Input image tensor.
+            x (torch.Tensor): Input image tensor (Batch, C, H, W).
         Returns:
             tuple: (reconstructed_x, x, mu, logvar)
         """
@@ -134,109 +136,117 @@ class VAE(nn.Module):
         Returns:
             dict: Dictionary containing total loss, reconstruction loss, and KLD.
         """
-        recon_loss = F.mse_loss(recon_x, x, reduction='sum') / x.shape[0] # Per batch item MSE
-        kld_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / x.shape[0] # Per batch item KLD
+        batch_size = x.shape[0]
+        if batch_size == 0:
+            return {'loss': torch.tensor(0.0), 'Reconstruction_Loss': torch.tensor(0.0), 'KLD': torch.tensor(0.0)}
+
+        recon_loss = F.mse_loss(recon_x.view(batch_size, -1), x.view(batch_size, -1), reduction='sum') / batch_size
+        kld_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp()) / batch_size
 
         loss = recon_loss + kld_weight * kld_loss
         return {'loss': loss, 'Reconstruction_Loss': recon_loss.detach(), 'KLD': kld_loss.detach()}
 
 
-# Define the RNN Model (Memory Model 'M')
+# Define the RNN Model (Memory Model 'M') - Shared Core, Separate Heads
 class RNNModel(nn.Module):
-    def __init__(self, latent_dim=32, action_dim=4, rnn_hidden_dim=256, num_rnn_layers=1):
+    def __init__(self, latent_dim=32, action_dim=4, rnn_hidden_dim=256, num_rnn_layers=1, num_agents=2):
         """
-        Recurrent Neural Network (LSTM) model.
-        Predicts the next latent state z_{t+1} given current z_t, action a_t, and hidden state h_t.
+        Recurrent Neural Network (LSTM) model with shared core and separate heads for multi-agent.
+        Predicts the next latent state z_{t+1} for each agent given combined current latent states z_t,
+        combined actions a_t, and the shared hidden state h_t.
 
         Args:
-            latent_dim (int): Dimensionality of the VAE latent vector z.
-            action_dim (int): Dimensionality of the action vector a.
-            rnn_hidden_dim (int): Number of hidden units in the LSTM.
-            num_rnn_layers (int): Number of LSTM layers.
+            latent_dim (int): Dimensionality of the VAE latent vector z (per agent).
+            action_dim (int): Dimensionality of the action vector a (per agent).
+            rnn_hidden_dim (int): Number of hidden units in the LSTM core.
+            num_rnn_layers (int): Number of LSTM layers in the core.
+            num_agents (int): Number of agents (default: 2).
         """
         super(RNNModel, self).__init__()
         self.latent_dim = latent_dim
         self.action_dim = action_dim
         self.rnn_hidden_dim = rnn_hidden_dim
         self.num_rnn_layers = num_rnn_layers
+        self.num_agents = num_agents
 
-        # LSTM layer
-        # Input size is concatenation of latent z and action a
-        self.lstm = nn.LSTM(latent_dim + action_dim, rnn_hidden_dim, num_rnn_layers, batch_first=True)
+        # --- Shared LSTM Core ---
+        # Input size is concatenation of latent states and actions from all agents
+        self.core_input_dim = (latent_dim + action_dim) * num_agents
+        self.lstm_core = nn.LSTM(self.core_input_dim, rnn_hidden_dim, num_rnn_layers, batch_first=True)
 
-        # Output layer to predict the next latent state z_{t+1}
-        # Predicts the mean of the next latent state directly for simplicity
-        # (Could be extended to predict distribution parameters like MDN-RNN)
-        self.fc_out = nn.Linear(rnn_hidden_dim, latent_dim)
+        # --- Separate Prediction Heads ---
+        # One head per agent to predict their next latent state
+        self.prediction_heads = nn.ModuleList([
+            nn.Linear(rnn_hidden_dim, latent_dim) for _ in range(num_agents)
+        ])
 
-    def forward(self, z, action, hidden_state):
+    def forward(self, z_combined, action_combined, hidden_state):
         """
-        Forward pass through the RNN model.
+        Forward pass through the shared core RNN and separate prediction heads.
+
         Args:
-            z (torch.Tensor): Current latent state (Batch, LatentDim).
-            action (torch.Tensor): Current action (Batch, ActionDim).
-            hidden_state (tuple): Previous hidden state (h_0, c_0) of the LSTM.
-                                  Each has shape (NumLayers, Batch, HiddenDim).
-                                  Pass None for the initial state.
+            z_combined (torch.Tensor): Concatenated current latent states of all agents
+                                     Shape: (Batch, latent_dim * num_agents).
+            action_combined (torch.Tensor): Concatenated current actions of all agents
+                                          Shape: (Batch, action_dim * num_agents).
+            hidden_state (tuple): Previous hidden state (h_0, c_0) of the LSTM core.
+                                Each has shape (NumLayers, Batch, HiddenDim).
+                                Pass None for the initial state.
+
         Returns:
-            tuple: (predicted_next_z, next_hidden_state)
-                   predicted_next_z (Batch, LatentDim)
-                   next_hidden_state (tuple): (h_n, c_n)
+            tuple: (predicted_z_t1_list, next_hidden_state)
+                   predicted_z_t1_list (list): List containing the predicted next latent state
+                                              tensor for each agent [(Batch, LatentDim), ...].
+                   next_hidden_state (tuple): Next shared hidden state (h_n, c_n).
         """
-        # Ensure inputs are correctly shaped for batch_first=True LSTM
-        # LSTM expects input shape (Batch, SeqLen, InputDim)
-        # Here, SeqLen is 1 as we process one step at a time
-        z = z.unsqueeze(1)         # (Batch, 1, LatentDim)
-        action = action.unsqueeze(1) # (Batch, 1, ActionDim)
+        # Prepare input for LSTM core
+        lstm_input = torch.cat((z_combined, action_combined), dim=1)
+        lstm_input = lstm_input.unsqueeze(1)  # Add sequence length dimension
 
-        # Concatenate z and action to form LSTM input
-        lstm_input = torch.cat((z, action), dim=2) # (Batch, 1, LatentDim + ActionDim)
+        # Shared LSTM core pass
+        lstm_out, next_hidden_state = self.lstm_core(lstm_input, hidden_state)
+        lstm_out_squeezed = lstm_out.squeeze(1)  # Shape: (Batch, HiddenDim)
 
-        # Pass through LSTM
-        lstm_out, next_hidden_state = self.lstm(lstm_input, hidden_state)
-        # lstm_out shape: (Batch, 1, HiddenDim)
+        # Separate prediction heads pass
+        predicted_z_t1_list = []
+        for i in range(self.num_agents):
+            predicted_z = self.prediction_heads[i](lstm_out_squeezed)
+            predicted_z_t1_list.append(predicted_z)
 
-        # Predict next latent state z_{t+1} from LSTM output
-        # Squeeze the sequence length dimension
-        predicted_next_z = self.fc_out(lstm_out.squeeze(1)) # (Batch, LatentDim)
-
-        return predicted_next_z, next_hidden_state
+        return predicted_z_t1_list, next_hidden_state
 
     def init_hidden(self, batch_size, device):
         """
-        Initializes the hidden state of the LSTM.
+        Initializes the hidden state of the LSTM core.
         Args:
             batch_size (int): The batch size.
             device: The torch device ('cpu' or 'cuda').
         Returns:
-            tuple: Initial hidden state (h_0, c_0).
+            tuple: Initial hidden state (hidden_state, cell_state).
         """
-        # The hidden state is a tuple (h_0, c_0)
-        # h_0 shape: (num_layers * num_directions, batch, hidden_size)
-        # c_0 shape: (num_layers * num_directions, batch, hidden_size)
-        h_0 = torch.zeros(self.num_rnn_layers, batch_size, self.rnn_hidden_dim).to(device)
-        c_0 = torch.zeros(self.num_rnn_layers, batch_size, self.rnn_hidden_dim).to(device)
-        return (h_0, c_0)
+        hidden_state = torch.zeros(self.num_rnn_layers, batch_size, self.rnn_hidden_dim).to(device)
+        cell_state = torch.zeros(self.num_rnn_layers, batch_size, self.rnn_hidden_dim).to(device)
+        return (hidden_state, cell_state)
 
 
 # Define the Self Model (predicts curiosity reward)
 class SelfModel(nn.Module):
     def __init__(self, latent_dim=32, rnn_hidden_dim=256, action_dim=4, fc_hidden_dim=128, output_dim=1):
         """
-        A self-model that predicts curiosity rewards.
-        Takes current latent state z_t, RNN hidden state h_t, and action a_t as input.
+        A self-model that predicts curiosity rewards (prediction error of the associated RNN head).
+        Takes agent's current latent state z_t, the shared RNN hidden state h_t,
+        and agent's action a_t as input.
 
         Args:
             latent_dim (int): Dimensionality of the VAE latent vector z.
-            rnn_hidden_dim (int): Dimensionality of the RNN hidden state h.
+            rnn_hidden_dim (int): Dimensionality of the shared RNN hidden state h.
             action_dim (int): Dimensionality of the action vector a.
             fc_hidden_dim (int): Hidden dimension for fully connected layers.
-            output_dim (int): Output dimension (1 for reward prediction).
+            output_dim (int): Output dimension (1 for reward/error prediction).
         """
         super(SelfModel, self).__init__()
 
-        # Input size is concatenation of z_t, h_t (only the hidden state h, not cell state c), and action a_t
-        # h_t shape is (NumLayers, Batch, HiddenDim), we take the last layer's output
+        # Input size is concatenation of agent's z_t, shared h_t (last layer), and agent's action a_t
         input_dim = latent_dim + rnn_hidden_dim + action_dim
 
         # Fully connected layers
@@ -245,27 +255,33 @@ class SelfModel(nn.Module):
             nn.ReLU(),
             nn.Linear(fc_hidden_dim, fc_hidden_dim // 2),
             nn.ReLU(),
-            nn.Linear(fc_hidden_dim // 2, output_dim)  # Output predicted reward
+            nn.Linear(fc_hidden_dim // 2, output_dim)  # Output predicted reward/error
         )
 
-    def forward(self, z, h, action):
+    def forward(self, z_agent, h_shared, action_agent):
         """
-        Forward pass through the self-model.
+        Forward pass through the self-model for a specific agent.
+
         Args:
-            z (torch.Tensor): Current latent state (Batch, LatentDim).
-            h (torch.Tensor): Current RNN hidden state (NumLayers, Batch, HiddenDim).
-                               We use the output of the last layer.
-            action (torch.Tensor): Action tensor (Batch, ActionDim).
+            z_agent (torch.Tensor): Current latent state of the specific agent (Batch, LatentDim).
+            h_shared (torch.Tensor): Current shared RNN hidden state (NumLayers, Batch, HiddenDim).
+                                   We use the output of the last layer.
+            action_agent (torch.Tensor): Action tensor of the specific agent (Batch, ActionDim).
+
         Returns:
-            torch.Tensor: Predicted curiosity reward (Batch, OutputDim).
+            torch.Tensor: Predicted curiosity reward/error for this agent (Batch, OutputDim).
         """
-        # Extract the hidden state from the last layer of the RNN
-        # h shape is (num_layers, batch, hidden_dim) -> take h[-1]
-        last_layer_h = h[-1] # Shape: (Batch, HiddenDim)
-
-        # Concatenate z_t, h_t (last layer), and action a_t
-        combined = torch.cat([z, last_layer_h, action], dim=1)
-
+        # Extract the hidden state from the last layer of the shared RNN
+        #last_layer_h_shared = h_shared[-1]  # Shape: (Batch, HiddenDim)
+        try:
+            # Concatenate agent's z_t, shared h_t (last layer), and agent's action a_t
+            combined = torch.cat([z_agent, h_shared, action_agent], dim=1)
+        except Exception as e:
+            print(f"Error concatenating z_agent, last_layer_h_shared, and action_agent: {e}")
+            print(f"  Input z_agent shape: {z_agent.shape}, ndim: {z_agent.ndim}")
+            print(f"  Input h_shared shape: {h_shared.shape}, ndim: {h_shared.ndim}")
+            print(f"  Input action_agent shape: {action_agent.shape}, ndim: {action_agent.ndim}")
+            raise e
         # Process the combined features through fully connected layers
         predicted_reward = self.fc_layers(combined)
         return predicted_reward

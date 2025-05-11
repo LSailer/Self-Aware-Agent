@@ -1,0 +1,1 @@
+Step,Position_X,Position_Y,Position_Z,Velocity_X,Velocity_Y,Velocity_Z,Orientation_W,Orientation_X,Orientation_Y,Orientation_Z,Angular_Velocity_X,Angular_Velocity_Y,Angular_Velocity_Z,Action_Type,Action_Vector_0,Action_Vector_1,Action_Vector_2,Action_Vector_3,Curiosity_Reward,World_Loss,Self_Loss,VAE_Loss,VAE_KLD_Loss,Is_Interacting

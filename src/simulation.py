@@ -1,153 +1,278 @@
 import torch
+import torch.nn.functional as F
+from torchvision import transforms as T
+from collections import deque, namedtuple
+import numpy as np
+import random
+import os
+
 from environment import Environment
-from curiosity_driven_agent import CuriosityDrivenAgent # Agent now uses VAE/RNN
+from models import VAE, RNNModel, SelfModel
+from multi_agent_controller import MultiAgentController
 from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
-import numpy as np
 
-MAX_STEPS = 1200
-BATCH_SIZE = 64 # Should match agent's batch_size
-UPDATE_EVERY_N_STEPS = 4 # How often to run model updates
-INTERACTION_DISTANCE_THRESHOLD = 0.8 # Example distance threshold for interaction
-EPSILON_GREEDY = 0.3 # Exploration rate
-def check_interaction(env, threshold):
-    """ Checks if the agent is close to any interactable object """
-    try:
-        agent_pos = np.array(env.get_state()["agent"]["position"])
-        cube_pos = np.array(env.get_state()["cube"]["position"])
-        cylinder_pos = np.array(env.get_state()["cylinder"]["position"])
+# --- Constants ---
+MAX_STEPS = 500  # Reduced for initial testing
+BATCH_SIZE = 32
+UPDATE_EVERY_N_STEPS = 4
+REPLAY_BUFFER_SIZE = 10000
+LEARNING_RATE_VAE = 0.0005
+LEARNING_RATE_RNN = 0.001
+LEARNING_RATE_SELF = 0.001
+LATENT_DIM = 32
+ACTION_DIM = 4  # Dimension of action vector per agent (vx, vy, 0, torque_z)
+RNN_HIDDEN_DIM = 256
+NUM_RNN_LAYERS = 1
+NUM_AGENTS = 2
+EPSILON_START = 0.95 # Start with more exploration
+EPSILON_END = 0.05  # End with less exploration
+EPSILON_DECAY = 30000 # Longer decay for epsilon
+INTERACTION_DISTANCE_THRESHOLD = 0.8 # For agent-agent interaction
+OBJECT_INTERACTION_THRESHOLD = 0.7 # For agent-object interaction (distance to object center)
+LOG_DIR = "logs/multi_agent_v2" # Changed log dir to avoid overwriting
 
-        dist_cube = np.linalg.norm(agent_pos - cube_pos)
-        dist_cylinder = np.linalg.norm(agent_pos - cylinder_pos)
+# --- Replay Buffer ---
+Experience = namedtuple('Experience', (
+    'obs_t1', 'obs_t2',             # Observations at time t (Agent 1, Agent 2)
+    'action_t1', 'action_t2',       # Actions at time t (Agent 1, Agent 2)
+    'reward_t1', 'reward_t2',       # External rewards (mostly 0 here)
+    'obs_tp1', 'obs_tp2',           # Observations at time t+1
+    'done'                          # Is the state terminal?
+))
+replay_buffer = deque(maxlen=REPLAY_BUFFER_SIZE)
 
-        return (dist_cube < threshold) or (dist_cylinder < threshold)
-    except Exception as e:
-        print(f"Error checking interaction: {e}")
-        return False
+# --- Image Preprocessing ---
+transform = T.Compose([
+    T.ToPILImage(),
+    T.Resize((64, 64)),
+    T.ToTensor(),  # Converts to [0, 1] and (C, H, W)
+])
+
+def preprocess_observation(obs_np):
+    """Applies transformation to a single NumPy observation."""
+    return transform(obs_np)
 
 
-def run_simulation():
-    # Use CUDA if available
+def run_multi_agent_simulation():
+    # --- Initialization ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    # Initialize the environment
+    # Environment
     env = Environment()
-    env.reset()
+    agent_ids = [env.agent_id_1, env.agent_id_2]
+    action_map = env.action_map
+    print(f"Agent IDs: {agent_ids}")
 
-    # Initialize the agent with VAE/RNN
-    agent = CuriosityDrivenAgent(
-        actions=env.action_map,
-        latent_dim=32,         # Example latent dimension for VAE
-        rnn_hidden_dim=256,    # Example hidden dimension for RNN
-        buffer_size=50000,     # Example buffer size
+    # Create models
+    vae = VAE(latent_dim=LATENT_DIM).to(device)
+    rnn_model = RNNModel(latent_dim=LATENT_DIM, action_dim=ACTION_DIM, 
+                        rnn_hidden_dim=RNN_HIDDEN_DIM, num_agents=NUM_AGENTS).to(device)
+    self_models = [SelfModel(latent_dim=LATENT_DIM, rnn_hidden_dim=RNN_HIDDEN_DIM, 
+                           action_dim=ACTION_DIM).to(device) for _ in range(NUM_AGENTS)]
+
+    # Create controllers (simple linear controllers for now)
+    controller_input_dim = LATENT_DIM + RNN_HIDDEN_DIM
+    controllers = [torch.nn.Linear(controller_input_dim, ACTION_DIM).to(device) 
+                  for _ in range(NUM_AGENTS)]
+
+    # Create MultiAgentController instance
+    multi_agent_controller = MultiAgentController(
+        vae=vae,
+        rnn_model=rnn_model,
+        self_models=self_models,
+        controllers=controllers,
+        num_agents=NUM_AGENTS,
+        action_map=action_map,
+        latent_dim=LATENT_DIM,
+        action_dim=ACTION_DIM,
+        rnn_hidden_dim=RNN_HIDDEN_DIM,
+        device=device,
+        replay_buffer_size=REPLAY_BUFFER_SIZE,
         batch_size=BATCH_SIZE,
-        device=device
+        learning_rate_vae=LEARNING_RATE_VAE,
+        learning_rate_rnn=LEARNING_RATE_RNN,
+        learning_rate_self=LEARNING_RATE_SELF,
+        epsilon_start=EPSILON_START,
+        epsilon_end=EPSILON_END,
+        epsilon_decay=EPSILON_DECAY
     )
 
-    # Initialize the video recorder
-    video_recorder = VideoRecorder(filename="camera_feed_vae_rnn.mp4")
+    # Logging & Video
+    os.makedirs(LOG_DIR, exist_ok=True)
+    
+    logger = MetricLogger(log_dir=LOG_DIR, csv_filename="multi_agent_metrics_v2.csv", 
+                         plot_filename_base="multi_agent_plot_v2")
+    
+    # Video recorders: Use the raw image from environment, not the transformed one for VAE
+    recorders = [
+        VideoRecorder(filename=os.path.join(LOG_DIR, f"agent_{i+1}_video.mp4"), 
+                     resolution=(480,640)) # Use original resolution for recording
+        for i in range(NUM_AGENTS)
+    ]
 
-    # Initialize the metric logger
-    logger = MetricLogger() # Logger will be updated to handle interaction freq
+    # --- Start Simulation ---
+    env.reset()
+    # Get initial observations
+    obs_t_np_list = [env.get_camera_image(agent_id) for agent_id in agent_ids]
+    # Set initial state in controller
+    multi_agent_controller.set_initial_state(obs_t_np_list)
 
-    # --- Simulation Loop ---
-    agent.reset_hidden_state() # Initialize RNN hidden state
-    raw_image = env.get_camera_image()
-    agent.current_z = agent.encode_image(raw_image) # Encode initial image
+    print("Starting multi-agent simulation...")
 
-    print("Starting simulation...")
     for step in range(MAX_STEPS):
-        # 1. Choose action based on current z_t and h_t
-        action_key, action_array = agent.choose_action(epsilon=EPSILON_GREEDY) # Adjust epsilon as needed
+        # --- 1. Choose actions for all agents ---
+        action_keys, action_arrays_list, current_epsilon = multi_agent_controller.choose_actions()
 
-        # 2. Apply action and step environment
-        env.apply_action(action_key)
+        # --- 2. Execute actions in environment ---
+        for i, agent_id in enumerate(agent_ids):
+            env.apply_action(agent_id, action_keys[i])
         env.step_simulation()
-        done = False # Assuming non-terminating env for now, or add termination logic
+        done = False
 
-        # 3. Get next state observation
-        next_raw_image = env.get_camera_image()
+        # --- 3. Get next observations ---
+        obs_tp1_np_list = [env.get_camera_image(agent_id) for agent_id in agent_ids]
 
-        # 4. Store experience in replay buffer
-        # For simplicity, store external reward as 0, focus on curiosity
-        external_reward = 0.0
-        agent.store_experience(raw_image, action_key, action_array, external_reward, next_raw_image, done)
+        # --- 4. Store experience in controller's replay buffer ---
+        multi_agent_controller.store_experience(
+            obs_t_list=obs_t_np_list,
+            action_arrays_list=action_arrays_list,
+            reward_list=[0.0] * NUM_AGENTS, # External rewards
+            obs_tp1_list=obs_tp1_np_list,
+            done=done
+        )
 
-        # 5. Update agent state (z_t and h_t) for the *next* step's action selection
-        # Encode the *next* image to get z_{t+1}
-        next_z = agent.encode_image(next_raw_image)
-        # Use the RNN to get the next hidden state h_{t+1} based on z_t, a_t, h_t
-        action_tensor = torch.tensor(action_array, dtype=torch.float32).unsqueeze(0).to(device)
-        with torch.no_grad():
-            _, next_h = agent.rnn_model(agent.current_z, action_tensor, agent.current_h)
+        # --- 5. Update RNN state and latent states in controller ---
+        state_updated_successfully = multi_agent_controller.update_rnn_state(action_arrays_list, obs_tp1_np_list)
+        
+        if not state_updated_successfully:
+            print(f"Warning: RNN state update failed at step {step}. Attempting to re-initialize controller state.")
+            current_obs_for_reset = [env.get_camera_image(agent_id) for agent_id in agent_ids]
+            multi_agent_controller.set_initial_state(current_obs_for_reset)
+            obs_t_np_list = current_obs_for_reset
+            continue
 
-        # Update agent's current state for the next iteration
-        agent.current_z = next_z
-        agent.current_h = next_h
-        raw_image = next_raw_image # Roll over observation
+        # --- IMPORTANT: Set current observation for the *next* iteration ---
+        obs_t_np_list = obs_tp1_np_list
 
-        # 6. Perform model updates periodically
+        # --- 6. Perform model updates using the controller ---
         loss_dict = None
-        if step > BATCH_SIZE and step % UPDATE_EVERY_N_STEPS == 0:
-            loss_dict = agent.update_models(visualize=step % 1000 == 0, step=step) # Train VAE, RNN, SelfModel
+        if step > multi_agent_controller.batch_size and step % UPDATE_EVERY_N_STEPS == 0:
+            loss_dict = multi_agent_controller.update_models(step)
 
-        # 7. Logging
+        # --- 7. Logging ---
         if loss_dict:
-            # Check for interaction
-            is_interacting = check_interaction(env, INTERACTION_DISTANCE_THRESHOLD)
+            current_env_state = env.get_state()
 
-            # Log metrics including interaction status
-            logger.log_metrics(
-                step=step,
-                env=env, # Pass env to get state inside logger if needed, or pass state directly
-                action_type=action_key,
-                action_vector=action_array,
-                # Use logged average curiosity from the update step
-                curiosity_reward=loss_dict.get('avg_curiosity_reward', 0.0),
-                world_loss=loss_dict.get('rnn_loss', 0.0), # Use RNN loss as "world loss"
-                self_loss=loss_dict.get('self_loss', 0.0),
-                vae_loss=loss_dict.get('vae_loss', 0.0),
-                vae_kld_loss=loss_dict.get('vae_kld_loss', 0.0),
-                is_interacting=is_interacting # Pass interaction status
-            )
-            print(f"Step {step}: Action: {action_key}, VAE Loss: {loss_dict.get('vae_loss', 0):.4f}, RNN Loss: {loss_dict.get('rnn_loss', 0):.4f}, Self Loss: {loss_dict.get('self_loss', 0):.4f}, Curiosity: {loss_dict.get('avg_curiosity_reward', 0):.4f}, Interacting: {is_interacting}")
-        elif step % 100 == 0:
-            print(f"Step {step}: Action: {action_key}")
+            # Interaction Logic
+            agent1_pos_np = np.array(current_env_state['agent_1']['position'])
+            agent2_pos_np = np.array(current_env_state['agent_2']['position'])
+            cube_pos_np = np.array(current_env_state['cube']['position'])
+            cylinder_pos_np = np.array(current_env_state['cylinder']['position'])
 
+            agent1_obj_interaction = (np.linalg.norm(agent1_pos_np - cube_pos_np) < OBJECT_INTERACTION_THRESHOLD or
+                                      np.linalg.norm(agent1_pos_np - cylinder_pos_np) < OBJECT_INTERACTION_THRESHOLD)
+            
+            agent2_obj_interaction = (np.linalg.norm(agent2_pos_np - cube_pos_np) < OBJECT_INTERACTION_THRESHOLD or
+                                      np.linalg.norm(agent2_pos_np - cylinder_pos_np) < OBJECT_INTERACTION_THRESHOLD)
+            
+            agent_agent_interaction = np.linalg.norm(agent1_pos_np - agent2_pos_np) < INTERACTION_DISTANCE_THRESHOLD
 
-        # 8. Video Recording (Annotate with available losses)
-        # Get latest losses from logger if not updated this step
-        current_rnn_loss = logger.world_losses[-1] if logger.world_losses else 0.0
-        current_self_loss = logger.self_losses[-1] if logger.self_losses else 0.0
-        current_curiosity = logger.rewards[-1] if logger.rewards else 0.0
+            try:
+                # Log for Agent 0 (Controller's perspective, maps to env.agent_id_1)
+                logger.log_metrics(
+                    step=step, agent_id=0,
+                    agent_pos=current_env_state['agent_1']['position'],
+                    agent_vel=current_env_state['agent_1']['velocity'],
+                    agent_ori=current_env_state['agent_1']['orientation'],
+                    agent_ang_vel=current_env_state['agent_1']['angular_velocity'],
+                    action_type=action_keys[0], action_vector=action_arrays_list[0],
+                    curiosity_reward=loss_dict.get('avg_curiosity_reward_1', 0.0),
+                    self_loss=loss_dict.get('self_loss_1', 0.0),
+                    world_loss=loss_dict.get('rnn_loss', 0.0),
+                    vae_loss=loss_dict.get('vae_loss', 0.0),
+                    vae_kld_loss=loss_dict.get('vae_kld_loss', 0.0),
+                    is_interacting_object=agent1_obj_interaction,
+                    is_interacting_with_other_agent=agent_agent_interaction 
+                )
+                # Log for Agent 1 (Controller's perspective, maps to env.agent_id_2)
+                logger.log_metrics(
+                    step=step, agent_id=1,
+                    agent_pos=current_env_state['agent_2']['position'],
+                    agent_vel=current_env_state['agent_2']['velocity'],
+                    agent_ori=current_env_state['agent_2']['orientation'],
+                    agent_ang_vel=current_env_state['agent_2']['angular_velocity'],
+                    action_type=action_keys[1], action_vector=action_arrays_list[1],
+                    curiosity_reward=loss_dict.get('avg_curiosity_reward_2', 0.0),
+                    self_loss=loss_dict.get('self_loss_2', 0.0),
+                    world_loss=loss_dict.get('rnn_loss', 0.0),
+                    vae_loss=loss_dict.get('vae_loss', 0.0),
+                    vae_kld_loss=loss_dict.get('vae_kld_loss', 0.0),
+                    is_interacting_object=agent2_obj_interaction,
+                    is_interacting_with_other_agent=agent_agent_interaction 
+                )
+            except Exception as e:
+                print(f"Error during logging at step {step}: {e}")
 
-        try:
-            # Use next_raw_image for annotation as it's the result of the action
-            annotated_frame = video_recorder.annotate_frame(
-                next_raw_image, step, current_curiosity, current_self_loss # Pass relevant metrics
-            )
-            video_recorder.write_frame(annotated_frame)
-        except Exception as e:
-            print(f"Error annotating/writing frame at step {step}: {e}")
+            print(f"Step {step}/{MAX_STEPS}, Eps: {current_epsilon:.3f} | "
+                  f"VAE: {loss_dict.get('vae_loss', 0):.4f} (R:{loss_dict.get('vae_recon_loss',0):.4f}, KLD:{loss_dict.get('vae_kld_loss',0):.4f}), "
+                  f"RNN: {loss_dict.get('rnn_loss', 0):.4f} (H1:{loss_dict.get('rnn_loss_head1',0):.4f}, H2:{loss_dict.get('rnn_loss_head2',0):.4f}), "
+                  f"Self1: {loss_dict.get('self_loss_1', 0):.4f} (Cur1:{loss_dict.get('avg_curiosity_reward_1',0):.4f}), "
+                  f"Self2: {loss_dict.get('self_loss_2', 0):.4f} (Cur2:{loss_dict.get('avg_curiosity_reward_2',0):.4f})")
+        
+        elif step % 200 == 0:
+            print(f"Step {step}/{MAX_STEPS}, Eps: {current_epsilon:.3f} (No model update this step)")
 
+        # --- 8. Video Recording ---
+        if obs_t_np_list[0] is not None and obs_t_np_list[1] is not None:
+            # Safely get latest curiosity and self-loss for annotation
+            curiosity_reward_1_ann = loss_dict.get('avg_curiosity_reward_1', 0.0) if loss_dict else 0.0
+            self_loss_1_ann = loss_dict.get('self_loss_1', 0.0) if loss_dict else 0.0
+            curiosity_reward_2_ann = loss_dict.get('avg_curiosity_reward_2', 0.0) if loss_dict else 0.0
+            self_loss_2_ann = loss_dict.get('self_loss_2', 0.0) if loss_dict else 0.0
+            
+            # If loss_dict is None, try to get recent values from logger
+            if not loss_dict and logger.all_metrics_data:
+                last_metrics_agent1 = next((m for m in reversed(logger.all_metrics_data) if m['Agent_ID'] == 0), None)
+                last_metrics_agent2 = next((m for m in reversed(logger.all_metrics_data) if m['Agent_ID'] == 1), None)
+                if last_metrics_agent1:
+                    curiosity_reward_1_ann = last_metrics_agent1.get('Curiosity_Reward', 0.0)
+                    self_loss_1_ann = last_metrics_agent1.get('Self_Loss', 0.0)
+                if last_metrics_agent2:
+                    curiosity_reward_2_ann = last_metrics_agent2.get('Curiosity_Reward', 0.0)
+                    self_loss_2_ann = last_metrics_agent2.get('Self_Loss', 0.0)
 
-        # Check for termination condition if applicable
-        # if done:
-        #     env.reset()
-        #     agent.reset_hidden_state()
-        #     raw_image = env.get_camera_image()
-        #     agent.current_z = agent.encode_image(raw_image)
+            try:
+                frame1_annotated = recorders[0].annotate_frame(obs_t_np_list[0].copy(), step, 
+                                                             curiosity_reward_1_ann, self_loss_1_ann)
+                recorders[0].write_frame(frame1_annotated)
+                
+                frame2_annotated = recorders[1].annotate_frame(obs_t_np_list[1].copy(), step, 
+                                                             curiosity_reward_2_ann, self_loss_2_ann)
+                recorders[1].write_frame(frame2_annotated)
+            except Exception as e:
+                print(f"Error annotating/writing frame at step {step}: {e}")
+                print(f"  Frame 1 shape: {obs_t_np_list[0].shape if obs_t_np_list[0] is not None else 'None'}, dtype: {obs_t_np_list[0].dtype if obs_t_np_list[0] is not None else 'None'}")
+                print(f"  Frame 2 shape: {obs_t_np_list[1].shape if obs_t_np_list[1] is not None else 'None'}, dtype: {obs_t_np_list[1].dtype if obs_t_np_list[1] is not None else 'None'}")
+        else:
+            print(f"Skipping video frame at step {step} due to None observation(s).")
 
+        # --- GUI Update (PyBullet specific, if running with GUI) ---
+        # time.sleep(1./240.) # Slows down simulation if uncommented
+
+        if step % 100== 0 and step > 0: # Plot metrics periodically
+             logger.plot_metrics()
 
     # --- Cleanup ---
     print("Simulation finished.")
-    video_recorder.close()
+    for recorder in recorders:
+        recorder.close()
     env.close()
-    logger.plot_metrics() # Generate plots, including interaction frequency
-
-    print("Logs and video saved.")
+    logger.plot_metrics() # Final plots
+    logger.close()
+    print(f"Logs and videos saved to {LOG_DIR}")
 
 if __name__ == "__main__":
-    run_simulation()
+    run_multi_agent_simulation()
 

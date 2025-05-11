@@ -76,9 +76,40 @@ class CuriosityDrivenAgent:
         # Initialize hidden state for a batch size of 1
         self.current_h = self.rnn_model.init_hidden(batch_size=1, device=self.device)
 
+    def calculate_prediction_error(self, predicted_next_z, actual_next_z, predicted_error=None):
+        """
+        Calculate prediction errors and losses between predicted and actual values.
+        
+        Args:
+            predicted_next_z (torch.Tensor): RNN's prediction of next latent state.
+            actual_next_z (torch.Tensor): Actual next latent state.
+            predicted_error (torch.Tensor, optional): Self-model's prediction of the error.
+        
+        Returns:
+            dict: Dictionary containing various error metrics:
+                - 'actual_error': MSE between predicted and actual next state
+                - 'error_loss': MSE between predicted and actual error (if predicted_error provided)
+        """
+        # Calculate actual prediction error without in-place operations
+        actual_error = F.mse_loss(predicted_next_z, actual_next_z, reduction='none')
+        actual_error = actual_error.mean(dim=1)  # Separate mean operation
+        
+        result = {
+            'actual_error': actual_error
+        }
+        
+        # If predicted_error is provided, calculate error loss
+        if predicted_error is not None:
+            # Ensure proper shape for comparison
+            actual_error_reshaped = actual_error.unsqueeze(1)
+            error_loss = F.mse_loss(predicted_error, actual_error_reshaped)
+            result['error_loss'] = error_loss
+            
+        return result
+
     def choose_action(self, epsilon=0.2):
         """
-        Choose an action based on the self-model's predicted reward or random exploration.
+        Choose an action based on maximizing the Self-Model prediction error.
         Uses the current latent state z_t and RNN hidden state h_t.
 
         Args:
@@ -93,7 +124,7 @@ class CuriosityDrivenAgent:
             # Random exploration
             action_key = np.random.choice(list(self.actions.keys()))
         else:
-            # Exploitation: Predict future rewards using SelfModel
+            # Exploitation: Predict future prediction errors using SelfModel
             self.self_model.eval() # Set self_model to evaluation mode
             with torch.no_grad():
                 future_rewards = []
@@ -106,11 +137,13 @@ class CuriosityDrivenAgent:
                     predicted_reward = self.self_model(self.current_z, h_state_for_self_model, action_tensor)
                     future_rewards.append((predicted_reward.item(), key))
 
+
             self.self_model.train() # Set back to training mode
             if not future_rewards: # Handle empty case if needed
                 action_key = np.random.choice(list(self.actions.keys()))
             else:
-                _, action_key = max(future_rewards) # Choose action predicted to yield highest reward
+                # Choose action predicted to yield highest prediction error
+                _, action_key = max(future_rewards)
 
         action_array = self.actions[action_key]
         return action_key, np.array(action_array, dtype=np.float32)
@@ -134,7 +167,7 @@ class CuriosityDrivenAgent:
         # Use Mean Squared Error in the latent space as the reward signal
         # Higher error means higher curiosity reward
         reward = F.mse_loss(predicted_next_z, actual_next_z.detach(), reduction='none').mean(dim=1) # Average MSE across latent dimensions
-        # Detach actual_next_z as it's the target
+        # Detach actual_next_z as it's the target«
         return reward.unsqueeze(1) # Shape: (Batch, 1)
 
     def update_models(self, visualize=False, step=0):
@@ -165,8 +198,6 @@ class CuriosityDrivenAgent:
         # Convert actions and rewards to tensors
         actions_array = np.stack(batch.action_array)
         action_t = torch.tensor(actions_array, dtype=torch.float32).to(self.device) # (Batch, ActionDim)
-        # rewards_t = torch.tensor(batch.reward, dtype=torch.float32).unsqueeze(1).to(self.device) # External reward if used
-        # done_t = torch.tensor(batch.done, dtype=torch.float32).unsqueeze(1).to(self.device)
 
         # --- 1. Update VAE ---
         self.optimizer_vae.zero_grad()
@@ -180,31 +211,35 @@ class CuriosityDrivenAgent:
             visualize_vae_reconstruction(processed_images, recon_x, step)
 
         # --- 2. Update RNN Model ---
-        # We need the RNN hidden state. For simplicity in batch training without sequences,
-        # we initialize a hidden state for the batch.
-        # A more advanced implementation would store hidden states in the buffer or unroll sequences.
         initial_hidden = self.rnn_model.init_hidden(self.batch_size, self.device)
         self.optimizer_rnn.zero_grad()
+        
         # Predict z_{t+1} using the RNN
-        predicted_z_t1, _ = self.rnn_model(z_t.detach(), action_t, initial_hidden) # Detach z_t to stop gradients flowing back to VAE through RNN
-        # Calculate prediction loss (e.g., MSE)
-        rnn_loss = F.mse_loss(predicted_z_t1, z_t1_actual.detach()) # Target is the VAE encoding of next image
+        predicted_z_t1, _ = self.rnn_model(z_t.detach(), action_t, initial_hidden)
+        
+        # Calculate prediction error using the new method
+        error_metrics = self.calculate_prediction_error(predicted_z_t1, z_t1_actual.detach())
+        rnn_loss = error_metrics['actual_error'].mean()
         rnn_loss.backward()
         self.optimizer_rnn.step()
 
         # --- 3. Calculate Curiosity Reward for SelfModel Training ---
-        # Use the just-calculated predictions and actual values for the batch
-        with torch.no_grad(): # Reward calculation shouldn't affect gradients
-            curiosity_reward_batch = self.calculate_curiosity_reward(predicted_z_t1, z_t1_actual) # (Batch, 1)
+        with torch.no_grad():
+            curiosity_reward_batch = error_metrics['actual_error'].unsqueeze(1)
 
         # --- 4. Update Self Model ---
         self.optimizer_self.zero_grad()
-        # Predict reward based on z_t, initial_hidden, and action_t
-        # Note: Using initial_hidden here is a simplification. Ideally, use the actual h_t if stored.
-        h_state_for_self_model = initial_hidden[0] # Get the h part of the tuple
-        predicted_reward = self.self_model(z_t.detach(), h_state_for_self_model.detach(), action_t) # Detach inputs
-        # Calculate loss against the calculated curiosity reward
-        self_loss = F.mse_loss(predicted_reward, curiosity_reward_batch.detach()) # Target is calculated curiosity
+        h_state_for_self_model = initial_hidden[0]
+        predicted_reward = self.self_model(z_t.detach(), h_state_for_self_model.detach(), action_t)
+        
+        # Calculate self model loss using the new method
+        self_error_metrics = self.calculate_prediction_error(
+            predicted_z_t1.detach(), 
+            z_t1_actual.detach(),
+            predicted_reward
+        )
+        self_loss = self_error_metrics['error_loss']
+        
         self_loss.backward()
         self.optimizer_self.step()
 
