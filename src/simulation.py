@@ -5,25 +5,32 @@ from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
 import numpy as np
 
-MAX_STEPS = 1200
+MAX_STEPS = 300
 BATCH_SIZE = 64 # Should match agent's batch_size
 UPDATE_EVERY_N_STEPS = 4 # How often to run model updates
 INTERACTION_DISTANCE_THRESHOLD = 0.8 # Example distance threshold for interaction
 EPSILON_GREEDY = 0.3 # Exploration rate
+
 def check_interaction(env, threshold):
-    """ Checks if the agent is close to any interactable object """
+    """Checks if the agent is close to any interactable object."""
     try:
-        agent_pos = np.array(env.get_state()["agent"]["position"])
-        cube_pos = np.array(env.get_state()["cube"]["position"])
-        cylinder_pos = np.array(env.get_state()["cylinder"]["position"])
+        state      = env.get_state()
+        agent_pos  = np.array(state["agent"]["position"])
+        cyl_pos    = np.array(state["cylinder"]["position"])
+        disk_pos   = np.array(state["disk"]["position"])
+        pyr_pos    = np.array(state["pyramid"]["position"])
 
-        dist_cube = np.linalg.norm(agent_pos - cube_pos)
-        dist_cylinder = np.linalg.norm(agent_pos - cylinder_pos)
+        dist_cyl   = np.linalg.norm(agent_pos - cyl_pos)
+        dist_disk  = np.linalg.norm(agent_pos - disk_pos)
+        dist_pyr   = np.linalg.norm(agent_pos - pyr_pos)
 
-        return (dist_cube < threshold) or (dist_cylinder < threshold)
+        return (dist_cyl  < threshold) or \
+               (dist_disk < threshold) or \
+               (dist_pyr  < threshold)
     except Exception as e:
         print(f"Error checking interaction: {e}")
         return False
+
 
 
 def run_simulation():

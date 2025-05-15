@@ -1,0 +1,5 @@
+newmtl Orange
+Ka 1.0 0.5 0.0     # Ambient (optional)
+Kd 1.0 0.5 0.0     # Diffuse – Hauptfarbe (Orange)
+Ks 0.2 0.2 0.2     # Specular (Glanzlicht)
+Ns 10              # Shininess

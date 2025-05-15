@@ -3,6 +3,7 @@ import pybullet_data
 import numpy as np
 import cv2
 import math
+import os
 
 from video_recorder import VideoRecorder
 
@@ -13,9 +14,12 @@ class Environment:
         # -- Konfiguriere hier deine Startpositionen --
         self.agent_start_pos = [0.0, 0.0, 0.2]
         self.agent_start_ori = [0, 0, 0, 1]  # Quaternion
-        self.cube_start_pos  = [0.8, 0, 0.4]
-        self.cube_start_ori  = [0, 0, 0, 1]
-        self.cylinder_start_pos = [2.0, 2.0, 0.5]  # Beispielposition des Zylinders
+        self.cylinder_start_pos  = [1.4, 0.2, 0.0]
+        self.cylinder_start_ori  = [0, 0, 0, 1]
+        self.disk_start_pos = [2.0, 2.0, 0.4]
+        self.disk_start_ori = [0, 0, 0, 1]
+        self.pyramid_start_pos = [-1.8, -1.0, 0.0]
+        self.pyramid_start_ori  = [0, 0, 0, 1]
 
         # Action Map
         self.action_map = {
@@ -47,35 +51,45 @@ class Environment:
 
         # Initialize agent as a green sphere
         self.agent_id = p.createMultiBody(
-            baseMass=3,
-            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_SPHERE, radius=0.2),
-            baseVisualShapeIndex=p.createVisualShape(p.GEOM_SPHERE, radius=0.2, rgbaColor=[0, 1, 0, 1]),
+            baseMass=6,  # Set small mass to allow pushing
+            baseCollisionShapeIndex=p.createCollisionShape(
+                p.GEOM_BOX, halfExtents=[0.2, 0.2, 0.2]
+            ),
+            baseVisualShapeIndex=p.createVisualShape(
+                p.GEOM_BOX, halfExtents=[0.2, 0.2, 0.2], rgbaColor=[0, 1, 0, 1]
+            ),
             basePosition=self.agent_start_pos  # <-- Agent spawn
         )
         
-        # Initialize a red cube as the target
-        self.cube_id = p.createMultiBody(
-            baseMass=6,  # Set small mass to allow pushing
+        # Initialize a red cylinder as the target
+        self.cylinder_id = p.createMultiBody(
+            baseMass=1,  # Masse des Zylinders (kann angepasst werden)
             baseCollisionShapeIndex=p.createCollisionShape(
-                p.GEOM_BOX, halfExtents=[0.4, 0.4, 0.4]
+                p.GEOM_CYLINDER, radius=0.7, height=0.1
             ),
             baseVisualShapeIndex=p.createVisualShape(
-                p.GEOM_BOX, halfExtents=[0.4, 0.4, 0.4], rgbaColor=[1, 0, 0, 1]
+                p.GEOM_CYLINDER, radius=0.7, length=0.1, rgbaColor=[0, 0, 1, 1]  # Blau
             ),
-            basePosition=self.cube_start_pos  # <-- Cube spawn
+            basePosition=self.cylinder_start_pos  # Position des Zylinders
         )
 
         # Initialize a blue cylinder
-        self.cylinder_id = p.createMultiBody(
+        self.disk_id = p.createMultiBody(
             baseMass=1,  # Masse des Zylinders (kann angepasst werden)
             baseCollisionShapeIndex=p.createCollisionShape(
                 p.GEOM_CYLINDER, radius=0.2, height=1.0
             ),
             baseVisualShapeIndex=p.createVisualShape(
-                p.GEOM_CYLINDER, radius=0.2, length=1.0, rgbaColor=[0, 0, 1, 1]  # Blau
+                p.GEOM_CYLINDER, radius=0.2, length=1.0, rgbaColor=[1, 0, 0, 1]  # Rot
             ),
-            basePosition=self.cylinder_start_pos  # Position des Zylinders
+            basePosition=self.disk_start_pos  # Position des Zylinders
         )
+
+        base_dir = os.path.dirname(os.path.realpath(__file__))
+        urdf_path = os.path.join(base_dir, "pyramid.urdf")
+        self.pyramid_id = p.loadURDF(urdf_path, basePosition=self.pyramid_start_pos)
+        print(urdf_path)
+
 
         # Set gravity in the environment
         p.setGravity(0, 0, -9.8)
@@ -102,7 +116,15 @@ class Environment:
         )
         # Optional: Set dynamics for the cylinder, if necessary
         p.changeDynamics(
-            self.cylinder_id, -1,
+            self.disk_id, -1,
+            lateralFriction=0.5,
+            restitution=0.1,
+            angularDamping=0.5,      # Hinzugefügte Drehmomentdämpfung für den Zylinder
+            linearDamping=0.5        # Hinzugefügte lineare Dämpfung für den Zylinder
+        )
+
+        p.changeDynamics(
+            self.pyramid_id, -1,
             lateralFriction=0.5,
             restitution=0.1,
             angularDamping=0.5,      # Hinzugefügte Drehmomentdämpfung für den Zylinder
@@ -112,7 +134,7 @@ class Environment:
     def _create_room(self):
         """Create a 10x10 room with walls."""
         wall_thickness = 0.2
-        wall_height = 2.0
+        wall_height = 1.0
         wall_length = 5
 
         # Define positions and sizes of walls
@@ -133,12 +155,21 @@ class Environment:
                     p.GEOM_BOX, halfExtents=wall["size"]
                 ),
                 baseVisualShapeIndex=p.createVisualShape(
-                    p.GEOM_BOX, halfExtents=wall["size"]
+                    p.GEOM_BOX, halfExtents=wall["size"],
+                    specularColor=[0, 0, 0]
                 ),
                 basePosition=wall["pos"],
                 baseMass=0
             )
             self.wall_ids.append(wall_id)
+            p.changeVisualShape(
+                objectUniqueId=wall_id,
+                linkIndex=-1,
+                rgbaColor=[1, 1, 1, 1],       # rgbaColor=[0, 0, 0, 0] zum wände unsichtbar machen
+                specularColor=[0, 0, 0],
+                flags=p.VISUAL_SHAPE_DOUBLE_SIDED  # Optional: kein Einfluss auf Schatten, aber sinnvoll für dünne Geometrien
+            )
+        p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)
 
     def reset(self):
         """Reset the environment to its initial state."""
@@ -148,16 +179,16 @@ class Environment:
             self.agent_start_pos,
             self.agent_start_ori
         )
-        # Reset cube
-        p.resetBasePositionAndOrientation(
-            self.cube_id,
-            self.cube_start_pos,
-            self.cube_start_ori
-        )
         # Reset cylinder
         p.resetBasePositionAndOrientation(
             self.cylinder_id,
             self.cylinder_start_pos,
+            self.cylinder_start_ori
+        )
+         # Reset disk
+        p.resetBasePositionAndOrientation(
+            self.disk_id,
+            self.disk_start_pos,
             [0, 0, 0, 1]  # Keine Rotation
         )
         # Reset velocities to ensure complete Stillstand
@@ -167,7 +198,12 @@ class Environment:
             angularVelocity=[0, 0, 0]
         )
         p.resetBaseVelocity(
-            self.cylinder_id,
+            self.disk_id,
+            linearVelocity=[0, 0, 0],
+            angularVelocity=[0, 0, 0]
+        )
+        p.resetBaseVelocity(
+            self.pyramid_id,
             linearVelocity=[0, 0, 0],
             angularVelocity=[0, 0, 0]
         )
@@ -227,8 +263,9 @@ class Environment:
         # agent
         agent_pos, agent_ori = p.getBasePositionAndOrientation(self.agent_id)
         agent_vel, agent_ang_vel = p.getBaseVelocity(self.agent_id)
-        # cube
-        cube_pos, cube_ori = p.getBasePositionAndOrientation(self.cube_id)
+        # objects
+        disk_pos, disk_ori = p.getBasePositionAndOrientation(self.disk_id)
+        pyramid_pos, pyramid_ori = p.getBasePositionAndOrientation(self.pyramid_id)
         # cylinder
         cylinder_pos, cylinder_ori = p.getBasePositionAndOrientation(self.cylinder_id)
         return {
@@ -238,13 +275,17 @@ class Environment:
                 "velocity": agent_vel,
                 "angular_velocity": agent_ang_vel,
             },
-            "cube": {
-                "position": cube_pos,
-                "orientation": cube_ori,
-            },
             "cylinder": {
                 "position": cylinder_pos,
                 "orientation": cylinder_ori,
+            },
+            "disk": {
+                "position": disk_pos,
+                "orientation": disk_ori,
+            },
+            "pyramid": {
+                "position": pyramid_pos,
+                "orientation": pyramid_ori,
             }
         }
 
