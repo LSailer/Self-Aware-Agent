@@ -5,13 +5,13 @@ from curiosity_driven_agent import CuriosityDrivenAgent
 from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
 
-MAX_STEPS = 300
+MAX_STEPS = 100
 BATCH_SIZE = 64
 INTERACTION_DISTANCE_THRESHOLD = 0.8
 EPSILON_GREEDY = 0.3
 UPDATE_EVERY_N_STEPS = 4
-VISUALIZE_VAE_AFTER_STEPS = 1000
-VISUALIZE_RNN_AFTER_STEPS = 1000
+VISUALIZE_VAE_AFTER_STEPS = 100
+VISUALIZE_RNN_AFTER_STEPS = 100
 LOG_DIR = "logs/SingleAgent_V1"
 
 

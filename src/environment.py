@@ -107,19 +107,61 @@ class Environment:
         for oid in [self.agent_id, self.cylinder_id, self.disk_id, self.pyramid_id]:
             p.resetBaseVelocity(oid, [0,0,0], [0,0,0])
 
-    def get_camera_image(self):
+    def get_camera_image(self) -> np.ndarray:
+        """
+        Capture the current camera view from the perspective of the specified agent.
+
+        Args:
+            agent_id (int): The unique ID of the agent (self.agent_id_1 or self.agent_id_2).
+
+        Returns:
+            np.ndarray: RGB image array (height, width, 3).
+        """
+
+        # Camera offset: Position relative to agent
+        camera_offset = [0.0, 0.0, 0.2]  # Camera slightly above agent center
+
+        # Get agent position and orientation
         agent_pos, agent_ori = p.getBasePositionAndOrientation(self.agent_id)
+
+        # Calculate forward direction based on current yaw rotation
         euler = p.getEulerFromQuaternion(agent_ori)
-        yaw = euler[2]
-        forward = [math.cos(yaw), math.sin(yaw), 0]
-        half=0.2; cam_h=half+0.3; back=0.3
-        eye = np.array(agent_pos) + np.array([0,0,cam_h]) - np.array(forward)*back
-        target = np.array(agent_pos) + np.array([0,0,half])
-        view = p.computeViewMatrix(eye.tolist(), target.tolist(), [0,0,1])
-        proj = p.computeProjectionMatrixFOV(90,1.0,0.1,10.0)
-        w,h,rgb,_,_ = p.getCameraImage(640,480,viewMatrix=view,projectionMatrix=proj)
-        img = np.array(rgb, dtype=np.uint8).reshape(h,w,4)
-        return img[:,:,:3]
+        yaw = euler[2]  # Yaw angle (rotation around Z-axis)
+
+        # Define forward direction in world coordinates
+        forward_dir = np.array([math.cos(yaw), math.sin(yaw), 0])
+
+        # Camera position relative to agent
+        camera_eye = np.array(agent_pos) + np.array(camera_offset)
+
+        # Target point for camera to look at
+        camera_target = camera_eye + forward_dir * 2.0  # Look 2 units ahead
+
+        # Calculate view matrix
+        view_matrix = p.computeViewMatrix(
+            cameraEyePosition=camera_eye.tolist(),
+            cameraTargetPosition=camera_target.tolist(),
+            cameraUpVector=[0, 0, 1]  # "Up" is Z-axis
+        )
+
+        # Define projection matrix
+        projection_matrix = p.computeProjectionMatrixFOV(
+            fov=90, aspect=1.0, nearVal=0.1, farVal=10.0
+        )
+
+        # Capture camera image
+        width, height, rgb_img, _, _ = p.getCameraImage(
+            width=640, height=480,
+            viewMatrix=view_matrix,
+            projectionMatrix=projection_matrix,
+            renderer=p.ER_BULLET_HARDWARE_OPENGL
+        )
+
+        # Convert to RGB array
+        rgb_array = np.array(rgb_img, dtype=np.uint8).reshape(height, width, 4)
+        rgb_image = rgb_array[:, :, :3]  # Remove alpha channel
+
+        return rgb_image
 
     def get_state(self):
         agent_pos, agent_ori = p.getBasePositionAndOrientation(self.agent_id)
