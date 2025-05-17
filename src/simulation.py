@@ -36,7 +36,7 @@ def run_simulation():
     agent=CuriosityDrivenAgent(actions=env.action_map,latent_dim=32,rnn_hidden_dim=256,
                                 buffer_size=50000,batch_size=BATCH_SIZE,device=device)
     recorder=VideoRecorder('camera_feed.mp4')
-    logger=MetricLogger()
+    logger=MetricLogger(log_dir=LOG_DIR)
 
     agent.reset_hidden_state()
     raw=env.get_camera_image(); agent.current_z=agent.encode_image(raw)
