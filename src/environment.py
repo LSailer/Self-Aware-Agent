@@ -6,7 +6,7 @@ import numpy as np
 import math
 
 class Environment:
-    def __init__(self, use_gui=True):
+    def __init__(self,use_gui):
         """Initialize the PyBullet environment."""
         # Start positions and orientations
         self.agent_start_pos    = [0.0, 0.0, 0.2]
@@ -96,9 +96,18 @@ class Environment:
         self.wall_ids=[]
         for w in walls:
             wid = p.createMultiBody(
-                baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_BOX, halfExtents=w['size']),
-                baseVisualShapeIndex =p.createVisualShape(p.GEOM_BOX, halfExtents=w['size']),
-                basePosition=w['pos'], baseMass=0
+                baseCollisionShapeIndex=p.createCollisionShape(
+                    p.GEOM_BOX,
+                    halfExtents=w['size']
+                ),
+                baseVisualShapeIndex=p.createVisualShape(
+                    p.GEOM_BOX,
+                    halfExtents=w['size'],
+                    rgbaColor=[0, 0, 0, 0],              # Alpha=0 → komplett transparent
+                    flags=p.VISUAL_SHAPE_DOUBLE_SIDED    # Damit beide Seiten sichtbar bleiben
+                ),
+                basePosition=w['pos'],
+                baseMass=0
             )
             self.wall_ids.append(wid)
 
