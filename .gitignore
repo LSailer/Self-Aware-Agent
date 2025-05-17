@@ -77,3 +77,5 @@ crashlytics-build.properties
 runs/metrics/
 
 camera_feed.mp4
+
+logs/

@@ -10,6 +10,9 @@ BATCH_SIZE = 64
 INTERACTION_DISTANCE_THRESHOLD = 0.8
 EPSILON_GREEDY = 0.3
 UPDATE_EVERY_N_STEPS = 4
+VISUALIZE_VAE_AFTER_STEPS = 1000
+VISUALIZE_RNN_AFTER_STEPS = 1000
+LOG_DIR = "logs/SingleAgent_V1"
 
 
 def check_interaction(env, threshold):
@@ -49,7 +52,7 @@ def run_simulation():
 
         loss_dict=None
         if step>BATCH_SIZE and step%UPDATE_EVERY_N_STEPS==0:
-            loss_dict=agent.update_models(visualize=step%1000==0,step=step)
+            loss_dict=agent.update_models(visualize=step%1000==0,step=step,log_dir=LOG_DIR,num_agents=1,visualize_vae_after_steps=VISUALIZE_VAE_AFTER_STEPS,visualize_rnn_after_steps=VISUALIZE_RNN_AFTER_STEPS)
 
         if loss_dict:
             interacting=check_interaction(env,INTERACTION_DISTANCE_THRESHOLD)

@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -7,7 +8,7 @@ from torchvision import transforms as T
 from collections import deque, namedtuple
 import random
 
-from utility import visualize_vae_reconstruction
+from utility import visualize_rnn_prediction, visualize_vae_reconstruction
 
 # Define the Experience tuple for the replay buffer
 Experience = namedtuple('Experience',
@@ -137,7 +138,7 @@ class CuriosityDrivenAgent:
         # Detach actual_next_z as it's the target
         return reward.unsqueeze(1) # Shape: (Batch, 1)
 
-    def update_models(self, visualize=False, step=0):
+    def update_models(self, visualize=False, step=0, log_dir="logs", num_agents=1, visualize_vae_after_steps=2, visualize_rnn_after_steps=2):
         """ Samples a batch from the replay buffer and updates VAE, RNN, and SelfModel """
         if len(self.replay_buffer) < self.batch_size:
             return None # Not enough samples to train yet
@@ -207,6 +208,37 @@ class CuriosityDrivenAgent:
         self_loss = F.mse_loss(predicted_reward, curiosity_reward_batch.detach()) # Target is calculated curiosity
         self_loss.backward()
         self.optimizer_self.step()
+
+        # --- 5. Visualize RNN Prediction ---
+        # VAE visualization
+        if step % visualize_vae_after_steps == 0:  # Visualize every 1000 steps
+            if processed_images.nelement() > 0:
+                self.vae.eval()
+                with torch.no_grad():
+                    recon_x_all_vis, _, _, _ = self.vae(processed_images[:min(8*num_agents, processed_images.shape[0])])  # Take max 8 pairs
+                visualize_path = os.path.join(log_dir, "vae_reconstructions")
+                visualize_vae_reconstruction(processed_images[:min(8*num_agents, processed_images.shape[0])],
+                                          recon_x_all_vis,
+                                          step,
+                                          save_dir=visualize_path)
+                self.vae.train()
+
+        # RNN prediction visualization
+        if step % visualize_rnn_after_steps == 0 and step > 0:  # Different period for RNN viz
+            self.vae.eval()  # VAE decoder will be used in eval mode
+            
+            # Visualize for Agent 1
+            if processed_next_images.nelement() > 0 and predicted_z_t1.nelement() > 0:
+                rnn_pred_save_dir = os.path.join(log_dir, "rnn_predictions")
+                visualize_rnn_prediction(
+                    actual_next_frames=processed_next_images.cpu(),  # Ground truth o_{t+1} for agent 1
+                    rnn_predicted_latent_z=predicted_z_t1.detach().cpu(),  # RNN's z_{t+1} prediction for agent 1
+                    vae_decode_function=self.vae.decode,  # Pass the decode method
+                    step=step,
+                    agent_id=0,  # Agent ID for naming files
+                    save_dir=rnn_pred_save_dir
+                )
+            
 
         # Return losses for logging
         return {
