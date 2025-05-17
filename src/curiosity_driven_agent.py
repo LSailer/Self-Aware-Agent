@@ -326,18 +326,22 @@ class CuriosityDrivenAgent:
         if step % visualize_rnn_after_steps == 0 and step > 0:  # Different period for RNN viz
             self.vae.eval()  # VAE decoder will be used in eval mode
             
-            # Visualize for Agent 1
             if processed_next_images.nelement() > 0 and predicted_z_t1.nelement() > 0:
                 rnn_pred_save_dir = os.path.join(log_dir, "rnn_predictions")
+                # 1) Ziel-Device bestimmen
+                target_device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+                # 2) Tensoren auf dasselbe Device verschieben
+                actual_frames = processed_next_images.to(target_device)
+                pred_frames   = predicted_z_t1.detach().to(target_device)
+                # 3) Visualisierung aufrufen
                 visualize_rnn_prediction(
-                    actual_next_frames=processed_next_images.cpu(),  # Ground truth o_{t+1} for agent 1
-                    rnn_predicted_latent_z=predicted_z_t1.detach().cpu(),  # RNN's z_{t+1} prediction for agent 1
-                    vae_decode_function=self.vae.decode,  # Pass the decode method
-                    step=step,
-                    agent_id=0,  # Agent ID for naming files
-                    save_dir=rnn_pred_save_dir
+                    actual_next_frames     = actual_frames,          # Ground truth o_{t+1}
+                    rnn_predicted_latent_z = pred_frames,            # RNN's z_{t+1} prediction
+                    vae_decode_function    = self.vae.decode,        # VAE-Decoder
+                    step                   = step,
+                    agent_id               = 0,                     # Agent ID für Dateinamen
+                    save_dir               = rnn_pred_save_dir
                 )
-            
 
         # Return losses for logging
         return {

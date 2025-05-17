@@ -27,7 +27,7 @@ def visualize_vae_reconstruction(originals, reconstructions, step, save_dir="log
         print("Warning: num_examples_to_show is zero or negative in visualize_vae_reconstruction.")
         return
 
-    originals_subset = originals[:num_examples_to_show]
+    originals_subset       = originals[:num_examples_to_show]
     reconstructions_subset = reconstructions[:num_examples_to_show]
     comparison = torch.cat([originals_subset, reconstructions_subset])
 
@@ -39,7 +39,8 @@ def visualize_vae_reconstruction(originals, reconstructions, step, save_dir="log
 
     plt.figure(figsize=(max(10, num_examples_to_show * 1.5), 4))
     try:
-        plt.imshow(np.transpose(grid.numpy(), (1, 2, 0)))
+        # hier das .cpu() vor .numpy()
+        plt.imshow(np.transpose(grid.cpu().numpy(), (1, 2, 0)))
     except Exception as e:
         print(f"Error during plt.imshow for VAE visualization: {e}")
         plt.close()
@@ -71,6 +72,12 @@ def visualize_rnn_prediction(actual_next_frames, rnn_predicted_latent_z, vae_dec
         save_dir (str): Directory to save the image grid.
         num_examples (int): Number of image pairs to display.
     """
+    import os
+    import torch
+    import numpy as np
+    import matplotlib.pyplot as plt
+    import torchvision.utils as vutils
+
     if actual_next_frames.shape[0] == 0 or rnn_predicted_latent_z.shape[0] == 0:
         print(f"Warning: No images or latent codes provided for RNN prediction visualization for Agent {agent_id}.")
         return
@@ -82,50 +89,50 @@ def visualize_rnn_prediction(actual_next_frames, rnn_predicted_latent_z, vae_dec
         print(f"Warning: num_examples_to_show is zero for RNN prediction viz for Agent {agent_id}.")
         return
 
-    actual_frames_subset = actual_next_frames[:num_examples_to_show]
+    actual_frames_subset     = actual_next_frames[:num_examples_to_show]
     predicted_latents_subset = rnn_predicted_latent_z[:num_examples_to_show]
 
     # Decode the RNN's predicted latent states using the VAE's decoder
-    with torch.no_grad(): # No gradients needed for visualization
-        # Ensure predicted_latents_subset is on the same device as the VAE model if vae_decode_function expects it
-        # However, for plotting, data should be on CPU. Assuming vae_decode_function handles device internally or expects CPU.
+    with torch.no_grad():
         try:
-            decoded_rnn_predictions = vae_decode_function(predicted_latents_subset) # This should return (B, C, H, W) tensor
+            decoded_rnn_predictions = vae_decode_function(predicted_latents_subset)
         except Exception as e:
             print(f"Error decoding RNN predicted latent states for Agent {agent_id}: {e}")
-            print(f"  Latent shape: {predicted_latents_subset.shape}, Latent dtype: {predicted_latents_subset.dtype}")
+            print(f"  Latent shape: {predicted_latents_subset.shape}, dtype: {predicted_latents_subset.dtype}")
             return
-            
-    # Ensure decoded predictions are on CPU for plotting
-    decoded_rnn_predictions = decoded_rnn_predictions.cpu()
+
+    # ─── Ensure both tensors live on the same device ───
+    target_device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    actual_frames_subset    = actual_frames_subset.to(target_device)
+    decoded_rnn_predictions = decoded_rnn_predictions.to(target_device)
+    # ───────────────────────────────────────────────────
 
     if decoded_rnn_predictions.shape != actual_frames_subset.shape:
-        print(f"Warning: Shape mismatch for Agent {agent_id} RNN viz. Actuals: {actual_frames_subset.shape}, Decoded Preds: {decoded_rnn_predictions.shape}")
-        # Attempt to reshape or pad if it's a simple mismatch, otherwise return
-        # For now, we'll just return to avoid more complex error handling here.
+        print(f"Warning: Shape mismatch for Agent {agent_id} RNN viz. "
+              f"Actuals: {actual_frames_subset.shape}, Decoded Preds: {decoded_rnn_predictions.shape}")
         return
 
     # Create comparison tensor: [Actual Next Frames, Decoded RNN Predicted Next Frames]
-    comparison = torch.cat([actual_frames_subset, decoded_rnn_predictions])
+    comparison = torch.cat([actual_frames_subset, decoded_rnn_predictions], dim=0)
 
     try:
-        grid = vutils.make_grid(comparison, nrow=num_examples_to_show, padding=2, normalize=False)
+        grid = vutils.make_grid(comparison.cpu(), nrow=num_examples_to_show, padding=2, normalize=False)
     except Exception as e:
-        print(f"Error creating RNN prediction visualization grid for Agent {agent_id} with vutils.make_grid: {e}")
+        print(f"Error creating RNN prediction visualization grid for Agent {agent_id}: {e}")
         return
 
-    plt.figure(figsize=(max(10, num_examples_to_show * 1.5), 4)) # Adjust figure size
+    plt.figure(figsize=(max(10, num_examples_to_show * 1.5), 4))
     try:
-        plt.imshow(np.transpose(grid.numpy(), (1, 2, 0))) # Convert (C, H, W) to (H, W, C)
+        plt.imshow(np.transpose(grid.numpy(), (1, 2, 0)))
     except Exception as e:
         print(f"Error during plt.imshow for RNN prediction visualization for Agent {agent_id}: {e}")
         plt.close()
         return
         
-    plt.title(f"Agent {agent_id} - RNN Prediction vs Actual Next Frame - Step {step}\nTop: Actual Next, Bottom: RNN Predicted (decoded)")
+    plt.title(f"Agent {agent_id} - RNN Prediction vs Actual Next Frame - Step {step}\n"
+              "Top: Actual Next, Bottom: RNN Predicted (decoded)")
     plt.axis('off')
     
-    # Ensure agent-specific directory
     agent_save_dir = os.path.join(save_dir, f"agent_{agent_id}")
     os.makedirs(agent_save_dir, exist_ok=True)
     save_path = os.path.join(agent_save_dir, f"rnn_pred_step_{step:06d}_agent_{agent_id}.png")
@@ -135,4 +142,4 @@ def visualize_rnn_prediction(actual_next_frames, rnn_predicted_latent_z, vae_dec
     except Exception as e:
         print(f"Error saving RNN prediction visualization for Agent {agent_id} to {save_path}: {e}")
     finally:
-        plt.close() # Ensure plot is closed to free memory
+        plt.close()

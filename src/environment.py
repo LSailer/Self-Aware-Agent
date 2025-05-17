@@ -47,7 +47,13 @@ class Environment:
 
         # Load a flat plane
         self.plane_id = p.loadURDF('plane.urdf')
-        p.changeVisualShape(self.plane_id, -1, rgbaColor=[0.5,0.5,0.5,1.0])
+        p.changeVisualShape(
+            objectUniqueId=self.plane_id,
+            linkIndex=-1,
+            rgbaColor=[0.5, 0.5, 0.5, 1.0],  # z.B. hellgrau
+            specularColor=[0, 0, 0],
+            #textureUniqueId=-1       # Hier kann man das Schabrettmuster umändern
+        )
 
         # Initialize agent as a green cube
         half = 0.2
@@ -103,7 +109,7 @@ class Environment:
                 baseVisualShapeIndex=p.createVisualShape(
                     p.GEOM_BOX,
                     halfExtents=w['size'],
-                    rgbaColor=[0, 0, 0, 0],              # Alpha=0 → komplett transparent
+                    rgbaColor=[0, 0, 0, 1],              # Alpha=0 → komplett transparent
                     flags=p.VISUAL_SHAPE_DOUBLE_SIDED    # Damit beide Seiten sichtbar bleiben
                 ),
                 basePosition=w['pos'],
@@ -119,61 +125,62 @@ class Environment:
         for oid in [self.agent_id, self.cylinder_id, self.disk_id, self.pyramid_id]:
             p.resetBaseVelocity(oid, [0,0,0], [0,0,0])
 
-    def get_camera_image(self) -> np.ndarray:
+    def get_camera_image(self):
         """
-        Capture the current camera view from the perspective of the specified agent.
-
-        Args:
-            agent_id (int): The unique ID of the agent (self.agent_id_1 or self.agent_id_2).
-
+        Capture the current camera view from the agent's perspective,
+        replace the background (“sky”) with a custom color.
         Returns:
-            np.ndarray: RGB image array (height, width, 3).
+            np.ndarray: RGB image of shape (height, width, 3)
         """
-
-        # Camera offset: Position relative to agent
-        camera_offset = [0.0, 0.0, 0.2]  # Camera slightly above agent center
-
-        # Get agent position and orientation
+        # 1) Get agent pose and forward direction
         agent_pos, agent_ori = p.getBasePositionAndOrientation(self.agent_id)
+        euler = p.getEulerFromQuaternion(agent_ori)            # (roll, pitch, yaw)
+        yaw = euler[2]
+        forward = np.array([math.cos(yaw), math.sin(yaw), 0])
 
-        # Calculate forward direction based on current yaw rotation
-        euler = p.getEulerFromQuaternion(agent_ori)
-        yaw = euler[2]  # Yaw angle (rotation around Z-axis)
+        # 2) Compute eye & target for ego-perspective
+        camera_offset = [0.0, 0.0, 0.2]                       # 30 cm über Agent
+        eye    = np.array(agent_pos) + np.array(camera_offset)
+        target = eye + forward * 2.0                          # 2 Einheiten vorwärts
 
-        # Define forward direction in world coordinates
-        forward_dir = np.array([math.cos(yaw), math.sin(yaw), 0])
-
-        # Camera position relative to agent
-        camera_eye = np.array(agent_pos) + np.array(camera_offset)
-
-        # Target point for camera to look at
-        camera_target = camera_eye + forward_dir * 2.0  # Look 2 units ahead
-
-        # Calculate view matrix
+        # 3) Build view and projection matrices
         view_matrix = p.computeViewMatrix(
-            cameraEyePosition=camera_eye.tolist(),
-            cameraTargetPosition=camera_target.tolist(),
-            cameraUpVector=[0, 0, 1]  # "Up" is Z-axis
+            cameraEyePosition   = eye.tolist(),
+            cameraTargetPosition= target.tolist(),
+            cameraUpVector      = [0, 0, 1]
+        )
+        proj_matrix = p.computeProjectionMatrixFOV(
+            fov    = 90,
+            aspect = 640/480,
+            nearVal= 0.1,
+            farVal = 10.0
         )
 
-        # Define projection matrix
-        projection_matrix = p.computeProjectionMatrixFOV(
-            fov=90, aspect=1.0, nearVal=0.1, farVal=10.0
+        # 4) Render RGB + depth
+        width, height, rgb_img, depth_buffer, _ = p.getCameraImage(
+            width           = 640,
+            height          = 480,
+            viewMatrix      = view_matrix,
+            projectionMatrix= proj_matrix,
+            renderer        = p.ER_BULLET_HARDWARE_OPENGL
         )
 
-        # Capture camera image
-        width, height, rgb_img, _, _ = p.getCameraImage(
-            width=640, height=480,
-            viewMatrix=view_matrix,
-            projectionMatrix=projection_matrix,
-            renderer=p.ER_BULLET_HARDWARE_OPENGL
-        )
+        # 5) Convert to NumPy arrays
+        rgba   = np.array(rgb_img,   dtype=np.uint8).reshape(height, width, 4)
+        depth  = np.array(depth_buffer, dtype=np.float32).reshape(height, width)
+        rgb    = rgba[:, :, :3]       # drop alpha channel
 
-        # Convert to RGB array
-        rgb_array = np.array(rgb_img, dtype=np.uint8).reshape(height, width, 4)
-        rgb_image = rgb_array[:, :, :3]  # Remove alpha channel
+        # 6) Create background mask (depth == far clip → no geometry)
+        bg_mask = (depth >= 1.0)
 
-        return rgb_image
+        # 7) Define sky color (in RGB 0–255)
+        sky_color = np.array([0, 100, 200], dtype=np.uint8)  # helles Himmelblau
+
+        # 8) Apply sky color to background pixels
+        rgb[bg_mask] = sky_color
+
+        return rgb
+
 
     def get_state(self):
         agent_pos, agent_ori = p.getBasePositionAndOrientation(self.agent_id)

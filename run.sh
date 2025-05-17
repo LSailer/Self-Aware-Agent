@@ -7,7 +7,7 @@
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=127G
 #SBATCH --gres=gpu:1
-#SBATCH --partition=dev_gpu_a100_il
+#SBATCH --partition=dev_gpu_h100
 echo "Job started ..." 
 
 
