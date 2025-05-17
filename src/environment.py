@@ -6,7 +6,7 @@ import numpy as np
 import math
 
 class Environment:
-    def __init__(self):
+    def __init__(self, use_gui=True):
         """Initialize the PyBullet environment."""
         # Start positions and orientations
         self.agent_start_pos    = [0.0, 0.0, 0.2]
@@ -30,7 +30,10 @@ class Environment:
         }
 
         # Connect and configure PyBullet
-        p.connect(p.GUI)
+        if use_gui:
+            p.connect(p.GUI)
+        else:
+            p.connect(p.DIRECT)
         p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)
         p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
         p.configureDebugVisualizer(p.COV_ENABLE_RGB_BUFFER_PREVIEW, 0)

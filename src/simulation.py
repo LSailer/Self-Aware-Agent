@@ -16,6 +16,7 @@ LOG_DIR = "logs/SingleAgent_V1"
 ACTION_SELECTION = ActionSelection.EPSILON_GREEDY
 TEMPERATURE = 1.0
 C = 1.0
+USE_GUI = False
 
 def check_interaction(env, threshold):
     try:
@@ -32,7 +33,7 @@ def check_interaction(env, threshold):
 def run_simulation():
     device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print("Using device:",device)
-    env=Environment(); env.reset()
+    env=Environment(use_gui=USE_GUI); env.reset()
     agent=CuriosityDrivenAgent(actions=env.action_map,latent_dim=32,rnn_hidden_dim=256,
                                 buffer_size=50000,batch_size=BATCH_SIZE,device=device)
     recorder=VideoRecorder('camera_feed.mp4')
