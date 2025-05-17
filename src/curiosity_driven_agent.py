@@ -1,3 +1,4 @@
+from enum import Enum
 import os
 import torch
 import torch.nn.functional as F
@@ -7,12 +8,18 @@ import matplotlib.pyplot as plt
 from torchvision import transforms as T
 from collections import deque, namedtuple
 import random
-
+import math
 from utility import visualize_rnn_prediction, visualize_vae_reconstruction
 
 # Define the Experience tuple for the replay buffer
 Experience = namedtuple('Experience',
                         ('raw_image', 'action_key', 'action_array', 'reward', 'next_raw_image', 'done'))
+
+#ENUMs for action selection
+class ActionSelection(Enum):
+    EPSILON_GREEDY = "epsilon_greedy"
+    BOLTZMANN = "boltzmann"
+    UCB = "ucb"
 
 class CuriosityDrivenAgent:
     def __init__(self, actions, latent_dim=32, rnn_hidden_dim=256, buffer_size=10000, batch_size=64, device='cpu'):
@@ -77,7 +84,15 @@ class CuriosityDrivenAgent:
         # Initialize hidden state for a batch size of 1
         self.current_h = self.rnn_model.init_hidden(batch_size=1, device=self.device)
 
-    def choose_action(self, epsilon=0.2):
+    def choose_action(self, action_selection=ActionSelection.EPSILON_GREEDY, epsilon=0.2, temperature=1.0, c=1.0):
+        if action_selection == ActionSelection.EPSILON_GREEDY:
+            return self.choose_action_epsilon(epsilon=epsilon)
+        elif action_selection == ActionSelection.BOLTZMANN:
+            return self.choose_action_Boltzmann(temperature=temperature)
+        else:
+            return self.choose_action_UCB(c=c)
+
+    def choose_action_epsilon(self, epsilon=0.2):
         """
         Choose an action based on the self-model's predicted reward or random exploration.
         Uses the current latent state z_t and RNN hidden state h_t.
@@ -115,7 +130,91 @@ class CuriosityDrivenAgent:
 
         action_array = self.actions[action_key]
         return action_key, np.array(action_array, dtype=np.float32)
+    
+    def choose_action_Boltzmann(self, temperature=1.0):
+        """
+        Choose an action using Softmax (Boltzmann) exploration over predicted rewards.
 
+        Args:
+            temperature (float): Controls exploration. Higher = more random; lower = more greedy.
+        Returns:
+            tuple: (action_key, action_array)
+        """
+        if self.current_z is None or self.current_h is None:
+            raise ValueError("Agent state (z or h) not initialized. Call encode_image and reset_hidden_state first.")
+
+        self.self_model.eval()
+        with torch.no_grad():
+            h_state_for_self_model = self.current_h[0]  # (NumLayers, 1, HiddenDim)
+
+            action_keys = list(self.actions.keys())
+            reward_values = []
+
+            for key in action_keys:
+                val_array = self.actions[key]
+                action_tensor = torch.tensor(val_array, dtype=torch.float32).unsqueeze(0).to(self.device)
+                predicted_reward = self.self_model(self.current_z, h_state_for_self_model, action_tensor)
+                reward_values.append(predicted_reward.item())
+
+            # Softmax über die Reward-Werte
+            reward_tensor = torch.tensor(reward_values, dtype=torch.float32)
+            probs = F.softmax(reward_tensor / temperature, dim=0).cpu().numpy()
+
+            # Auswahl einer Aktion basierend auf Softmax-Wahrscheinlichkeiten
+            action_index = np.random.choice(len(action_keys), p=probs)
+            action_key = action_keys[action_index]
+
+        self.self_model.train()
+        action_array = self.actions[action_key]
+        return action_key, np.array(action_array, dtype=np.float32)
+
+
+
+    def choose_action_UCB(self, c=1.0):
+        """
+        Choose an action using Upper Confidence Bound (UCB) strategy.
+
+        Args:
+            c (float): Exploration constant. Higher = more exploration.
+        Returns:
+            tuple: (action_key, action_array)
+        """
+        if self.current_z is None or self.current_h is None:
+            raise ValueError("Agent state (z or h) not initialized. Call encode_image and reset_hidden_state first.")
+
+        # Initialisierung der Zählungen, falls nicht vorhanden
+        if not hasattr(self, "action_counts"):
+            self.action_counts = {key: 1 for key in self.actions}  # starte mit 1 um 0-Division zu vermeiden
+            self.total_steps = len(self.actions)
+
+        self.self_model.eval()
+        with torch.no_grad():
+            h_state_for_self_model = self.current_h[0]
+            ucb_scores = []
+            action_keys = list(self.actions.keys())
+
+            for key in action_keys:
+                val_array = self.actions[key]
+                action_tensor = torch.tensor(val_array, dtype=torch.float32).unsqueeze(0).to(self.device)
+                predicted_reward = self.self_model(self.current_z, h_state_for_self_model, action_tensor).item()
+
+                # UCB-Wert berechnen
+                count = self.action_counts.get(key, 1)
+                bonus = c * math.sqrt(math.log(self.total_steps + 1) / count)
+                ucb_score = predicted_reward + bonus
+                ucb_scores.append((ucb_score, key))
+
+            # Wähle Aktion mit höchstem UCB-Wert
+            _, action_key = max(ucb_scores)
+
+        # Zählungen aktualisieren
+        self.action_counts[action_key] += 1
+        self.total_steps += 1
+        self.self_model.train()
+
+        action_array = self.actions[action_key]
+        return action_key, np.array(action_array, dtype=np.float32)
+    
     def store_experience(self, raw_image, action_key, action_array, reward, next_raw_image, done):
         """ Stores an experience tuple in the replay buffer """
         # Note: We store raw images and re-process/encode them during training updates

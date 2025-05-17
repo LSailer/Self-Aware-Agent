@@ -50,7 +50,7 @@ def run_simulation():
         agent.last_processed_image = processed_image
 
         # Choose an action
-        action_key, action_array = agent.choose_action(epsilon=0.6)  # Choose action
+        action_key, action_array = agent.choose_action_epsilon(epsilon=0.6)  # Choose action
         print(f"Step {step}: Chose action '{action_key}' with vector: {action_array}")
         action_tensor = torch.tensor(action_array, dtype=torch.float32).unsqueeze(0) 
 

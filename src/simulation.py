@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from environment import Environment
-from curiosity_driven_agent import CuriosityDrivenAgent
+from curiosity_driven_agent import ActionSelection, CuriosityDrivenAgent
 from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
 
@@ -13,7 +13,9 @@ UPDATE_EVERY_N_STEPS = 4
 VISUALIZE_VAE_AFTER_STEPS = 100
 VISUALIZE_RNN_AFTER_STEPS = 100
 LOG_DIR = "logs/SingleAgent_V1"
-
+ACTION_SELECTION = ActionSelection.EPSILON_GREEDY
+TEMPERATURE = 1.0
+C = 1.0
 
 def check_interaction(env, threshold):
     try:
@@ -40,7 +42,7 @@ def run_simulation():
     raw=env.get_camera_image(); agent.current_z=agent.encode_image(raw)
     print("Starting simulation...")
     for step in range(MAX_STEPS):
-        action_key,action_array=agent.choose_action(epsilon=EPSILON_GREEDY)
+        action_key,action_array=agent.choose_action(action_selection=ACTION_SELECTION,epsilon=EPSILON_GREEDY,temperature=TEMPERATURE,c=C)
         env.apply_action(action_key); env.step_simulation()
         next_raw=env.get_camera_image()
         agent.store_experience(raw,action_key,action_array,0.0,next_raw,False)
