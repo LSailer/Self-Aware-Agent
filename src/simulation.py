@@ -9,6 +9,7 @@ MAX_STEPS = 300
 BATCH_SIZE = 64
 INTERACTION_DISTANCE_THRESHOLD = 0.8
 EPSILON_GREEDY = 0.3
+UPDATE_EVERY_N_STEPS = 4
 
 
 def check_interaction(env, threshold):
