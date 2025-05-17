@@ -4,11 +4,11 @@ import numpy as np
 import torch
 
 class VideoRecorder:
-    def __init__(self, filename="output.mp4", resolution=(640, 480), fps=20):
+    def __init__(self, filename="output.mp4", resolution=(640, 480), fps=20, log_dir="logs"):
         """Initialize the video recorder."""
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Codec for MP4
-        self.out = cv2.VideoWriter(filename, fourcc, fps, resolution)
-        self.filename = filename
+        self.filename = os.path.join(log_dir, filename)
+        self.out = cv2.VideoWriter(self.filename, fourcc, fps, resolution)
 
     def write_frame(self, frame):
         """Write a frame to the video."""
