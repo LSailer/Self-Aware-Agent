@@ -16,7 +16,7 @@ LOG_DIR = "logs/SingleAgent_V1"
 ACTION_SELECTION = ActionSelection.EPSILON_GREEDY
 TEMPERATURE = 1.0
 C = 1.0
-USE_GUI = False
+USE_GUI = True
 
 def check_interaction(env, threshold):
     try:
