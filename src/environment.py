@@ -12,9 +12,9 @@ class Environment:
         self.agent_start_ori    = [0, 0, 0, 1]
         self.cylinder_start_pos = [1.4, 0.2, 0.0]
         self.cylinder_start_ori = [0, 0, 0, 1]
-        self.disk_start_pos     = [2.0, 2.0, 0.4]
+        self.disk_start_pos     = [0.0, 1.0, 0.5]
         self.disk_start_ori     = [0, 0, 0, 1]
-        self.pyramid_start_pos  = [-1.8, -1.0, 0.0]
+        self.pyramid_start_pos  = [-1.5, -0.5, 0.0]
         self.pyramid_start_ori  = [0, 0, 0, 1]
 
         self.action_map = {
