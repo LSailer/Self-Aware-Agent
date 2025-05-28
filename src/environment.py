@@ -24,7 +24,7 @@ class Environment:
             'right':        [0,     50.0, 0, 0],
             'rotate_left':  [0,     0,    0, 5.0],
             'rotate_right': [0,     0,    0, -5.0],
-            'stop':         [0,     0,    0, 0],
+            #'stop':         [0,     0,    0, 0],
         }
 
         if self.use_gui:
@@ -83,7 +83,7 @@ class Environment:
 
         base_dir = os.path.dirname(os.path.realpath(__file__))
         urdf_path = os.path.join(base_dir, 'pyramid.urdf')
-        self.pyramid_id = p.loadURDF("\Self-Aware-Agent\src\pyramid.urdf",
+        self.pyramid_id = p.loadURDF(urdf_path,
                                      basePosition=self.pyramid_start_pos,
                                      baseOrientation=self.pyramid_start_ori)
 

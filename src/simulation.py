@@ -5,7 +5,7 @@ from curiosity_driven_agent import ActionSelection, CuriosityDrivenAgent
 from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
 
-MAX_STEPS = 500
+MAX_STEPS = 150
 BATCH_SIZE = 64
 INTERACTION_DISTANCE_THRESHOLD = 0.8
 EPSILON_GREEDY = 0.3
