@@ -65,19 +65,19 @@ class Environment:
             basePosition=self.agent_start_pos
         )
 
-        self.cylinder_id = p.createMultiBody(
+        self.disk_id = p.createMultiBody(
             baseMass=1,
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.7, height=0.1),
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.7, length=0.1,
-                                                     rgbaColor=[1, 0, 0, 1]),
+                                                     rgbaColor=[0, 0, 1, 1]),
             basePosition=self.cylinder_start_pos
         )
 
-        self.disk_id = p.createMultiBody(
+        self.cylinder_id = p.createMultiBody(
             baseMass=1,
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0),
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.2, length=1.0,
-                                                     rgbaColor=[0, 0, 1, 1]),
+                                                     rgbaColor=[1, 0, 0, 1]),
             basePosition=self.disk_start_pos
         )
 
