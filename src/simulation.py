@@ -16,7 +16,7 @@ LOG_DIR = "logs/SingleAgent_V1"
 ACTION_SELECTION = ActionSelection.EPSILON_GREEDY
 TEMPERATURE = 1.0
 C = 1.0
-USE_GUI = True
+USE_GUI = False
 
 def check_interaction(env):
     """
@@ -101,19 +101,16 @@ def run_simulation():
                 is_interacting_object=interacting
             )
             print(f"Step {step}: Action {action_key}, interacting={interacting}")
-        elif step % 100 == 0:
-            print(f"Step {step}: Action {action_key}")
-
-        # Video-Annotation
-        try:
+            # Video-Annotation
             frame = recorder.annotate_frame(
                 next_raw, step,
-                logger.rewards[-1] if logger.rewards else 0,
+                loss_dict.get('avg_curiosity_reward', 0),
                 0
             )
             recorder.write_frame(frame)
-        except:
-            pass
+        elif step % 100 == 0:
+            print(f"Step {step}: Action {action_key}")
+
 
     print("Simulation finished.")
     recorder.close()
