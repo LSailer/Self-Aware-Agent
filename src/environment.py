@@ -10,9 +10,9 @@ class Environment:
         self.use_gui = use_gui
         self.agent_start_pos    = [0.0, 0.0, 0.2]
         self.agent_start_ori    = [0, 0, 0, 1]
-        self.cylinder_start_pos = [1.4, 0.2, 0.0]
+        self.cylinder_start_pos = [1.4, 0.2, 0.5]
         self.cylinder_start_ori = [0, 0, 0, 1]
-        self.disk_start_pos     = [0.0, 1.0, 0.5]
+        self.disk_start_pos     = [0.0, 1.0, 0]
         self.disk_start_ori     = [0, 0, 0, 1]
         self.pyramid_start_pos  = [-1.5, -0.5, 0.0]
         self.pyramid_start_ori  = [0, 0, 0, 1]
