@@ -6,7 +6,7 @@ from curiosity_driven_agent import ActionSelection, CuriosityDrivenAgent
 from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
 
-MAX_STEPS = 400
+MAX_STEPS = 300
 BATCH_SIZE = 64
 EPSILON_GREEDY = 0.3
 UPDATE_EVERY_N_STEPS = 4
@@ -92,13 +92,13 @@ def run_simulation():
         if loss_dict:
             interacting = check_interaction(env)
             logger.log_metrics(
-                step, env, action_key, action_array,
+                step, 0, action_key, action_array,
                 curiosity_reward=loss_dict.get('avg_curiosity_reward', 0),
                 world_loss=loss_dict.get('rnn_loss', 0),
                 self_loss=loss_dict.get('self_loss', 0),
                 vae_loss=loss_dict.get('vae_loss', 0),
                 vae_kld_loss=loss_dict.get('vae_kld_loss', 0),
-                is_interacting=interacting
+                is_interacting_object=interacting
             )
             print(f"Step {step}: Action {action_key}, interacting={interacting}")
         elif step % 100 == 0:

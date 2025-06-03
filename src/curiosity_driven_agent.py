@@ -47,9 +47,9 @@ class CuriosityDrivenAgent:
         self.self_model = SelfModel(latent_dim=latent_dim, rnn_hidden_dim=rnn_hidden_dim, action_dim=self.action_dim).to(self.device)
 
         # --- Initialize Optimizers ---
-        self.optimizer_vae = torch.optim.Adam(self.vae.parameters(), lr=0.001)
-        self.optimizer_rnn = torch.optim.Adam(self.rnn_model.parameters(), lr=0.001)
-        self.optimizer_self = torch.optim.Adam(self.self_model.parameters(), lr=0.001)
+        self.optimizer_vae = torch.optim.Adam(self.vae.parameters(), lr=0.0001)
+        self.optimizer_rnn = torch.optim.Adam(self.rnn_model.parameters(), lr=0.0001)
+        self.optimizer_self = torch.optim.Adam(self.self_model.parameters(), lr=0.0001)
 
         # --- Replay Buffer ---
         self.replay_buffer = deque(maxlen=buffer_size)
