@@ -10,14 +10,13 @@ class Environment:
         self.use_gui = use_gui
         self.agent_start_pos    = [0.0, 0.0, 0.2]
         self.agent_start_ori    = [0, 0, 0, 1]
-        self.cylinder_start_pos = [1.4, 0.2, 0.5]
+        self.cylinder_start_pos = [2.4, 0.2, 0.5]
         self.cylinder_start_ori = [0, 0, 0, 1]
-        self.disk_start_pos     = [0.0, 1.0, 0]
+        self.disk_start_pos     = [0.0, 2.0, 0]
         self.disk_start_ori     = [0, 0, 0, 1]
-        self.pyramid_start_pos  = [-1.5, -0.5, 0.0]
+        self.pyramid_start_pos  = [-2.0, -0.5, 0.0]
         self.pyramid_start_ori  = [0, 0, 0, 1]
-
-        self.sphere_start_pos = [0.5, -1.0, 0.5]   # X, Y, Z
+        self.sphere_start_pos = [0.5, -2.0, 0.3]   # X, Y, Z
         self.sphere_start_ori = [0, 0, 0, 1]
 
         self.action_map = {
@@ -117,7 +116,7 @@ class Environment:
     def _create_room(self):
         wall_thickness = 0.2
         wall_height = 1.0
-        wall_length = 5
+        wall_length = 7.5
         walls = [
             {'pos': [0,  wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]},
             {'pos': [0, -wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]},
