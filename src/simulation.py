@@ -6,17 +6,17 @@ from curiosity_driven_agent import ActionSelection, CuriosityDrivenAgent
 from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
 
-MAX_STEPS = 1000
+MAX_STEPS = 80000
 BATCH_SIZE = 16
 EPSILON_GREEDY = 0.3
 UPDATE_EVERY_N_STEPS = 4
-VISUALIZE_VAE_AFTER_STEPS = 100
-VISUALIZE_RNN_AFTER_STEPS = 100
+VISUALIZE_VAE_AFTER_STEPS = 1000
+VISUALIZE_RNN_AFTER_STEPS = 1000
 LOG_DIR = "logs/SingleAgent_V1"
 ACTION_SELECTION = ActionSelection.EPSILON_GREEDY
 TEMPERATURE = 1.0
 C = 1.0
-USE_GUI = True
+USE_GUI = False
 
 def check_interaction(env):
     """
@@ -39,7 +39,7 @@ def run_simulation():
 
     agent = CuriosityDrivenAgent(
         actions=env.action_map,
-        latent_dim=64,
+        latent_dim=128,
         rnn_hidden_dim=256,
         buffer_size=50000,
         batch_size=BATCH_SIZE,
