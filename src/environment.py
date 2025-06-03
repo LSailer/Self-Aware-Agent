@@ -83,7 +83,7 @@ class Environment:
 
         base_dir = os.path.dirname(os.path.realpath(__file__))
         urdf_path = os.path.join(base_dir, 'pyramid.urdf')
-        self.pyramid_id = p.loadURDF(urdf_path,
+        self.pyramid_id = p.loadURDF('\Self-Aware-Agent\src\pyramid.urdf',
                                      basePosition=self.pyramid_start_pos,
                                      baseOrientation=self.pyramid_start_ori)
 
@@ -101,20 +101,27 @@ class Environment:
             {'pos': [ wall_length/2, 0, wall_height/2], 'size': [wall_thickness/2, wall_length/2, wall_height/2]},
         ]
         self.wall_ids = []
+        texture_id = p.loadTexture("\Self-Aware-Agent\src\steinwand.jpg") 
         for w in walls:
             cid = p.createCollisionShape(p.GEOM_BOX, halfExtents=w['size'])
+
+            # rgbaColor brauchst du nicht, wenn du eine Textur nutzt
             vid = p.createVisualShape(
                 p.GEOM_BOX,
                 halfExtents=w['size'],
-                rgbaColor=[*self.wall_color_norm, self.wall_alpha],
                 flags=p.VISUAL_SHAPE_DOUBLE_SIDED
             )
+
             wid = p.createMultiBody(
                 baseCollisionShapeIndex=cid,
                 baseVisualShapeIndex=vid,
                 basePosition=w['pos'],
                 baseMass=0
             )
+
+            # Wechsle die Textur nach dem Erzeugen
+            p.changeVisualShape(wid, -1, textureUniqueId=texture_id)
+
             self.wall_ids.append(wid)
 
     def reset(self):
