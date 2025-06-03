@@ -17,6 +17,9 @@ class Environment:
         self.pyramid_start_pos  = [-1.5, -0.5, 0.0]
         self.pyramid_start_ori  = [0, 0, 0, 1]
 
+        self.sphere_start_pos = [0.5, -1.0, 0.5]   # X, Y, Z
+        self.sphere_start_ori = [0, 0, 0, 1]
+
         self.action_map = {
             'forward':      [50.0,  0,    0, 0],
             'backward':     [-50.0, 0,    0, 0],
@@ -66,7 +69,7 @@ class Environment:
         )
 
         self.disk_id = p.createMultiBody(
-            baseMass=1,
+            baseMass=0.01,
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.7, height=0.1),
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.7, length=0.1,
                                                      rgbaColor=[0, 0, 1, 1]),
@@ -74,7 +77,7 @@ class Environment:
         )
 
         self.cylinder_id = p.createMultiBody(
-            baseMass=1,
+            baseMass=0.01,
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0),
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.2, length=1.0,
                                                      rgbaColor=[1, 0, 0, 1]),
@@ -86,6 +89,27 @@ class Environment:
         self.pyramid_id = p.loadURDF(urdf_path,
                                      basePosition=self.pyramid_start_pos,
                                      baseOrientation=self.pyramid_start_ori)
+        
+        sphere_radius = 0.3
+        sphere_mass   = 0.01
+        sphere_collision = p.createCollisionShape(
+            p.GEOM_SPHERE,
+            radius=sphere_radius
+        )
+
+        sphere_visual = p.createVisualShape(
+            p.GEOM_SPHERE,
+            radius=sphere_radius,
+            rgbaColor=[1.0, 1.0, 0.0, 1.0]  # Gelb (R=1,G=1,B=0,A=1)
+        )
+        self.sphere_id = p.createMultiBody(
+            baseMass=sphere_mass,
+            baseCollisionShapeIndex=sphere_collision,
+            baseVisualShapeIndex=sphere_visual,
+            basePosition=self.sphere_start_pos,
+            baseOrientation=self.sphere_start_ori
+        )
+
 
         p.setGravity(0, 0, -9.8)
         self._create_room()

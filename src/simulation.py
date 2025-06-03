@@ -6,7 +6,7 @@ from curiosity_driven_agent import ActionSelection, CuriosityDrivenAgent
 from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
 
-MAX_STEPS = 300
+MAX_STEPS = 1000
 BATCH_SIZE = 16
 EPSILON_GREEDY = 0.3
 UPDATE_EVERY_N_STEPS = 4
@@ -16,7 +16,7 @@ LOG_DIR = "logs/SingleAgent_V1"
 ACTION_SELECTION = ActionSelection.EPSILON_GREEDY
 TEMPERATURE = 1.0
 C = 1.0
-USE_GUI = False
+USE_GUI = True
 
 def check_interaction(env):
     """
@@ -24,7 +24,7 @@ def check_interaction(env):
     mit Zylinder, Scheibe oder Pyramide hat.
     """
     # Prüfe echte Kontaktpunkte in PyBullet
-    for obj_id in (env.cylinder_id, env.disk_id, env.pyramid_id):
+    for obj_id in (env.cylinder_id, env.disk_id, env.pyramid_id, env.sphere_id):
         contacts = p.getContactPoints(bodyA=env.agent_id, bodyB=obj_id)
         if contacts:
             return True
@@ -39,7 +39,7 @@ def run_simulation():
 
     agent = CuriosityDrivenAgent(
         actions=env.action_map,
-        latent_dim=32,
+        latent_dim=64,
         rnn_hidden_dim=256,
         buffer_size=50000,
         batch_size=BATCH_SIZE,
