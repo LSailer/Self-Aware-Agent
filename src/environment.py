@@ -10,12 +10,14 @@ class Environment:
         self.use_gui = use_gui
         self.agent_start_pos    = [0.0, 0.0, 0.2]
         self.agent_start_ori    = [0, 0, 0, 1]
-        self.cylinder_start_pos = [2.0, 2.0, 0.5]
+        self.cylinder_start_pos = [2.4, 0.2, 0.5]
         self.cylinder_start_ori = [0, 0, 0, 1]
-        self.disk_start_pos     = [-1.5, 0, 0]
+        self.disk_start_pos     = [0.0, 2.0, 0]
         self.disk_start_ori     = [0, 0, 0, 1]
-        self.pyramid_start_pos  = [1.4, 0.2, 0.0]
+        self.pyramid_start_pos  = [-2.0, -0.5, 0.0]
         self.pyramid_start_ori  = [0, 0, 0, 1]
+        self.sphere_start_pos = [0.5, -2.0, 0.3]   # X, Y, Z
+        self.sphere_start_ori = [0, 0, 0, 1]
 
         self.action_map = {
             'forward':      [50.0,  0,    0, 0],
@@ -24,7 +26,7 @@ class Environment:
             'right':        [0,     50.0, 0, 0],
             'rotate_left':  [0,     0,    0, 5.0],
             'rotate_right': [0,     0,    0, -5.0],
-            #'stop':         [0,     0,    0, 0],
+            'stop':         [0,     0,    0, 0],
         }
 
         if self.use_gui:
@@ -65,27 +67,48 @@ class Environment:
             basePosition=self.agent_start_pos
         )
 
-        self.cylinder_id = p.createMultiBody(
-            baseMass=1,
-            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0),
-            baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.2, length=1.0,
-                                                     rgbaColor=[1, 0, 0, 1]),
-            basePosition=self.cylinder_start_pos
-        )
-
         self.disk_id = p.createMultiBody(
-            baseMass=1,
+            baseMass=0.01,
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.7, height=0.1),
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.7, length=0.1,
                                                      rgbaColor=[0, 0, 1, 1]),
+            basePosition=self.cylinder_start_pos
+        )
+
+        self.cylinder_id = p.createMultiBody(
+            baseMass=0.01,
+            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0),
+            baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.2, length=1.0,
+                                                     rgbaColor=[1, 0, 0, 1]),
             basePosition=self.disk_start_pos
         )
 
         base_dir = os.path.dirname(os.path.realpath(__file__))
         urdf_path = os.path.join(base_dir, 'pyramid.urdf')
-        self.pyramid_id = p.loadURDF('\Self-Aware-Agent\src\pyramid.urdf',
+        self.pyramid_id = p.loadURDF(urdf_path,
                                      basePosition=self.pyramid_start_pos,
                                      baseOrientation=self.pyramid_start_ori)
+        
+        sphere_radius = 0.3
+        sphere_mass   = 0.01
+        sphere_collision = p.createCollisionShape(
+            p.GEOM_SPHERE,
+            radius=sphere_radius
+        )
+
+        sphere_visual = p.createVisualShape(
+            p.GEOM_SPHERE,
+            radius=sphere_radius,
+            rgbaColor=[1.0, 1.0, 0.0, 1.0]  # Gelb (R=1,G=1,B=0,A=1)
+        )
+        self.sphere_id = p.createMultiBody(
+            baseMass=sphere_mass,
+            baseCollisionShapeIndex=sphere_collision,
+            baseVisualShapeIndex=sphere_visual,
+            basePosition=self.sphere_start_pos,
+            baseOrientation=self.sphere_start_ori
+        )
+
 
         p.setGravity(0, 0, -9.8)
         self._create_room()
@@ -93,7 +116,7 @@ class Environment:
     def _create_room(self):
         wall_thickness = 0.2
         wall_height = 1.0
-        wall_length = 5
+        wall_length = 7.5
         walls = [
             {'pos': [0,  wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]},
             {'pos': [0, -wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]},
@@ -101,7 +124,9 @@ class Environment:
             {'pos': [ wall_length/2, 0, wall_height/2], 'size': [wall_thickness/2, wall_length/2, wall_height/2]},
         ]
         self.wall_ids = []
-        texture_id = p.loadTexture("\Self-Aware-Agent\src\steinwand.jpg") 
+        base_dir = os.path.dirname(os.path.realpath(__file__))
+        steinwand_path = os.path.join(base_dir, 'steinwand.jpg')
+        texture_id = p.loadTexture(steinwand_path) 
         for w in walls:
             cid = p.createCollisionShape(p.GEOM_BOX, halfExtents=w['size'])
 
@@ -125,12 +150,10 @@ class Environment:
             self.wall_ids.append(wid)
 
     def reset(self):
-
-        p.resetBasePositionAndOrientation(self.cylinder_id, self.cylinder_start_pos, self.cylinder_start_ori)
-        p.resetBasePositionAndOrientation(self.pyramid_id, self.pyramid_start_pos, self.pyramid_start_ori)
-        p.resetBasePositionAndOrientation(self.disk_id, self.disk_start_pos, self.disk_start_ori)
-        
         p.resetBasePositionAndOrientation(self.agent_id, self.agent_start_pos, self.agent_start_ori)
+        p.resetBasePositionAndOrientation(self.cylinder_id, self.cylinder_start_pos, self.cylinder_start_ori)
+        p.resetBasePositionAndOrientation(self.disk_id, self.disk_start_pos, self.disk_start_ori)
+        p.resetBasePositionAndOrientation(self.pyramid_id, self.pyramid_start_pos, self.pyramid_start_ori)
         for oid in [self.agent_id, self.cylinder_id, self.disk_id, self.pyramid_id]:
             p.resetBaseVelocity(oid, [0, 0, 0], [0, 0, 0])
 
