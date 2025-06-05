@@ -6,12 +6,12 @@ from curiosity_driven_agent import ActionSelection, CuriosityDrivenAgent
 from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
 
-MAX_STEPS = 80000
+MAX_STEPS = 500
 BATCH_SIZE = 16
 EPSILON_GREEDY = 0.3
 UPDATE_EVERY_N_STEPS = 4
-VISUALIZE_VAE_AFTER_STEPS = 1000
-VISUALIZE_RNN_AFTER_STEPS = 1000
+VISUALIZE_VAE_AFTER_STEPS = 100
+VISUALIZE_RNN_AFTER_STEPS = 100
 LOG_DIR = "logs/SingleAgent_V1"
 ACTION_SELECTION = ActionSelection.EPSILON_GREEDY
 TEMPERATURE = 1.0

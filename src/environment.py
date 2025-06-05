@@ -6,7 +6,7 @@ import numpy as np
 import math
 
 class Environment:
-    def __init__(self, use_gui, sky_color=(10, 130, 200), wall_color=(0, 0, 0, 0)):
+    def __init__(self, use_gui, sky_color=(10, 130, 200), wall_color=(0, 0, 0, 1)):
         self.use_gui = use_gui
         self.agent_start_pos    = [0.0, 0.0, 0.2]
         self.agent_start_ori    = [0, 0, 0, 1]
