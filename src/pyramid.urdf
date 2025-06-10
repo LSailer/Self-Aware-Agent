@@ -1,5 +1,5 @@
 <?xml version="1.0" ?>
-<robot name="pyramid">Add commentMore actions
+<robot name="pyramid">
   <link name="pyramid_link">
 
     <visual>
