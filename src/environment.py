@@ -26,7 +26,7 @@ class Environment:
             'right':        [0,     50.0, 0, 0],
             'rotate_left':  [0,     0,    0, 5.0],
             'rotate_right': [0,     0,    0, -5.0],
-            'stop':         [0,     0,    0, 0],
+            #'stop':         [0,     0,    0, 0],
         }
 
         if self.use_gui:
@@ -75,6 +75,7 @@ class Environment:
             basePosition=self.cylinder_start_pos
         )
 
+
         self.cylinder_id = p.createMultiBody(
             baseMass=0.01,
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0),
@@ -83,11 +84,13 @@ class Environment:
             basePosition=self.disk_start_pos
         )
 
+
         base_dir = os.path.dirname(os.path.realpath(__file__))
         urdf_path = os.path.join(base_dir, 'pyramid.urdf')
         self.pyramid_id = p.loadURDF(urdf_path,
                                      basePosition=self.pyramid_start_pos,
                                      baseOrientation=self.pyramid_start_ori)
+        
         
         sphere_radius = 0.3
         sphere_mass   = 0.01
