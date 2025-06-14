@@ -5,16 +5,18 @@ from collections import deque, namedtuple
 import numpy as np
 import random
 import os
+import pybullet as p
 
 from environment import Environment
 from models import VAE, RNNModel, SelfModel
 from multi_agent_controller import MultiAgentController
 from video_recorder import VideoRecorder
 from metric_logger import MetricLogger
+from curiosity_driven_agent import ActionSelection
 
 # --- Constants ---
-MAX_STEPS = 5000  # Reduced for initial testing
-BATCH_SIZE = 32
+MAX_STEPS = 100
+BATCH_SIZE = 16
 UPDATE_EVERY_N_STEPS = 4
 REPLAY_BUFFER_SIZE = 10000
 LEARNING_RATE_VAE = 0.001
@@ -25,15 +27,14 @@ ACTION_DIM = 4  # Dimension of action vector per agent (vx, vy, 0, torque_z)
 RNN_HIDDEN_DIM = 256
 NUM_RNN_LAYERS = 1
 NUM_AGENTS = 2
-EPSILON_START = 0.95 # Start with more exploration
-EPSILON_END = 0.05  # End with less exploration
-EPSILON_DECAY = 30000 # Longer decay for epsilon
-INTERACTION_DISTANCE_THRESHOLD = 0.8 # For agent-agent interaction
-OBJECT_INTERACTION_THRESHOLD = 0.7 # For agent-object interaction (distance to object center)
-LOG_DIR = "logs/multi_agent_v3" # Changed log dir to avoid overwriting
-VAE_VISUALIZE_AFTER_STEPS= 100
-RNN_VISUALIZE_AFTER_STEPS=100
-USE_GUI =False
+EPSILON_GREEDY = 0.3
+VAE_VISUALIZE_AFTER_STEPS = 30
+RNN_VISUALIZE_AFTER_STEPS = 30
+LOG_DIR = "logs/MultiAgent_V1"
+ACTION_SELECTION = ActionSelection.EPSILON_GREEDY
+TEMPERATURE = 1.0
+C = 1.0
+USE_GUI = False
 
 # --- Replay Buffer ---
 Experience = namedtuple('Experience', (
@@ -56,13 +57,33 @@ def preprocess_observation(obs_np):
     """Applies transformation to a single NumPy observation."""
     return transform(obs_np)
 
+def check_interaction_between_agents(agent_ids):
+    """
+    Returns True when the two agents have contact with each other.
+    """
+    for agent_id in agent_ids:
+        for other_agent_id in agent_ids:
+            if agent_id != other_agent_id:
+                contacts = p.getContactPoints(bodyA=agent_id, bodyB=other_agent_id)
+                if contacts:
+                    return True
+    return False
 
-def run_multi_agent_simulation():
-    # --- Initialization ---
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+def check_interaction(env, agent_id):
+    """
+    Returns True when either agent has contact with any object in the environment.
+    """
+    # Check actual contact points in PyBullet
+    for obj_id in (env.cylinder_id, env.disk_id, env.pyramid_id, env.sphere_id):
+        contacts = p.getContactPoints(bodyA=agent_id, bodyB=obj_id)
+        if contacts:
+            return True
+    return False
 
-    # Environment
+def run_simulation():
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print("Using device:", device)
+
     env = Environment(use_gui=USE_GUI)
     agent_ids = [env.agent_id_1, env.agent_id_2]
     action_map = env.action_map
@@ -97,9 +118,7 @@ def run_multi_agent_simulation():
         learning_rate_vae=LEARNING_RATE_VAE,
         learning_rate_rnn=LEARNING_RATE_RNN,
         learning_rate_self=LEARNING_RATE_SELF,
-        epsilon_start=EPSILON_START,
-        epsilon_end=EPSILON_END,
-        epsilon_decay=EPSILON_DECAY,
+
         vae_visualize_after_steps=VAE_VISUALIZE_AFTER_STEPS,
         log_dir=LOG_DIR,
         rnn_visualize_after_steps=RNN_VISUALIZE_AFTER_STEPS
@@ -172,18 +191,11 @@ def run_multi_agent_simulation():
             current_env_state = env.get_state()
 
             # Interaction Logic
-            agent1_pos_np = np.array(current_env_state['agent_1']['position'])
-            agent2_pos_np = np.array(current_env_state['agent_2']['position'])
-            cube_pos_np = np.array(current_env_state['cube']['position'])
-            cylinder_pos_np = np.array(current_env_state['cylinder']['position'])
-
-            agent1_obj_interaction = (np.linalg.norm(agent1_pos_np - cube_pos_np) < OBJECT_INTERACTION_THRESHOLD or
-                                      np.linalg.norm(agent1_pos_np - cylinder_pos_np) < OBJECT_INTERACTION_THRESHOLD)
+            agent1_obj_interaction = check_interaction(env, agent_ids[0])
             
-            agent2_obj_interaction = (np.linalg.norm(agent2_pos_np - cube_pos_np) < OBJECT_INTERACTION_THRESHOLD or
-                                      np.linalg.norm(agent2_pos_np - cylinder_pos_np) < OBJECT_INTERACTION_THRESHOLD)
+            agent2_obj_interaction = check_interaction(env, agent_ids[1])
             
-            agent_agent_interaction = np.linalg.norm(agent1_pos_np - agent2_pos_np) < INTERACTION_DISTANCE_THRESHOLD
+            agent_agent_interaction = check_interaction_between_agents(agent_ids)
 
             try:
                 # Log for Agent 0 (Controller's perspective, maps to env.agent_id_1)
@@ -284,5 +296,5 @@ def run_multi_agent_simulation():
     print(f"Logs and videos saved to {LOG_DIR}")
 
 if __name__ == "__main__":
-    run_multi_agent_simulation()
+    run_simulation()
 

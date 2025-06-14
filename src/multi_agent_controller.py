@@ -40,10 +40,6 @@ class MultiAgentController:
                 learning_rate_vae: float,
                 learning_rate_rnn: float,
                 learning_rate_self: float,
-                # Epsilon Greedy
-                epsilon_start: float,
-                epsilon_end: float,
-                epsilon_decay: float,
                 vae_visualize_after_steps: int = 1000,
                 rnn_visualize_after_steps: int = 1000,
                 log_dir: str = None):
@@ -87,10 +83,6 @@ class MultiAgentController:
         self.optimizer_rnn = optim.Adam(self.rnn_model.parameters(), lr=learning_rate_rnn)
         self.optimizer_self_models = [optim.Adam(sm.parameters(), lr=learning_rate_self) for sm in self.self_models]
 
-        # Epsilon Greedy state
-        self.epsilon_start = epsilon_start
-        self.epsilon_end = epsilon_end
-        self.epsilon_decay = epsilon_decay
         self.current_step = 0  # Internal counter for epsilon decay
 
         # Image preprocessing (consistent with VAE training)

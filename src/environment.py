@@ -1,4 +1,5 @@
-from typing import Dict, List
+import os
+import torch
 import pybullet as p
 import pybullet_data
 import numpy as np
@@ -6,8 +7,10 @@ import math
 
 
 class Environment:
-    def __init__(self, use_gui=False):
+    def __init__(self, use_gui=False, sky_color=(10, 130, 200), wall_color=(0, 0, 0, 0)):
         """Initialize the PyBullet environment for two agents."""
+        self.use_gui = use_gui
+        
         # -- Configure start positions --
         # Agent 1 (Green)
         self.agent1_start_pos = [-1.0, 0.0, 0.2]
@@ -18,67 +21,71 @@ class Environment:
         self.agent2_start_ori = p.getQuaternionFromEuler([0, 0, math.pi])  # Yaw = 180 degrees
 
         # Objects
-        self.cube_start_pos = [0.0, 1.5, 0.4]
-        self.cube_start_ori = p.getQuaternionFromEuler([0, 0, 0])
-        self.cylinder_start_pos = [0.0, -1.5, 0.5]
-        self.cylinder_start_ori = p.getQuaternionFromEuler([0, 0, 0])
+        self.cylinder_start_pos = [2.4, 0.2, 0.5]
+        self.cylinder_start_ori = [0, 0, 0, 1]
+        self.disk_start_pos = [0.0, 2.0, 0]
+        self.disk_start_ori = [0, 0, 0, 1]
+        self.pyramid_start_pos = [-2.0, -0.5, 0.0]
+        self.pyramid_start_ori = [0, 0, 0, 1]
+        self.sphere_start_pos = [0.5, -2.0, 0.3]
+        self.sphere_start_ori = [0, 0, 0, 1]
 
         # Action Map (identical for both agents)
-        # Format: [vx, vy, dummy, torque_z] (relative to agent)
         self.action_map = {
-            "forward":      [50.0,   0,   0,  0],
-            "backward":     [-50.0,  0,   0,  0],
-            "left":         [0, -50.0,   0,  0],
-            "right":        [0,  50.0,   0,  0],
-            "rotate_left":  [0,   0,   0,  5.0],
-            "rotate_right": [0,   0,   0, -5.0],
-            "stop":         [0,    0,   0,   0],  
+            'forward':      [50.0,  0,    0, 0],
+            'backward':     [-50.0, 0,    0, 0],
+            'left':         [0,    -50.0, 0, 0],
+            'right':        [0,     50.0, 0, 0],
+            'rotate_left':  [0,     0,    0, 5.0],
+            'rotate_right': [0,     0,    0, -5.0],
+            'stop':         [0,     0,    0, 0],
         }
 
-        self.use_gui = use_gui
-
         # Initialize PyBullet
-        self._initialize_pybullet()
+        if self.use_gui:
+            self.physics_client = p.connect(p.GUI)
+        else:
+            self.physics_client = p.connect(p.DIRECT)
+            
+        # Configure debug visualizer
+        p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_RGB_BUFFER_PREVIEW, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_DEPTH_BUFFER_PREVIEW, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_SEGMENTATION_MARK_PREVIEW, 0)
+        
+        # Set physics parameters
+        p.setTimeStep(1.0/60.0)
+        p.setRealTimeSimulation(0)
+        p.setPhysicsEngineParameter(enableConeFriction=0)
+        p.setPhysicsEngineParameter(numSolverIterations=10)
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
+
+        # Set sky and wall colors
+        self.sky_color = np.array(sky_color[:3], dtype=np.uint8)
+        self.sky_color_norm = (self.sky_color.astype(np.float32) / 255.0).tolist()
+        if wall_color is None:
+            wall_color = (*sky_color[:3], 255)
+        wc_rgb, wc_a = wall_color[:3], wall_color[3]
+        self.wall_color = np.array(wc_rgb, dtype=np.uint8)
+        self.wall_alpha = wc_a / 255.0
+        self.wall_color_norm = (self.wall_color.astype(np.float32) / 255.0).tolist()
 
         # Create environment objects
         self._create_environment_objects()
-
+        
         # Set up dynamics
         self._setup_dynamics()
-        
-        
 
-    def _initialize_pybullet(self) -> None:
-        """Initialize PyBullet connection and basic settings."""
-        try:
-            if self.use_gui:
-                self.physics_client = p.connect(p.GUI)
-                print("Successfully connected to PyBullet GUI.")
-            else:
-                self.physics_client = p.connect(p.DIRECT)
-                print("Successfully connected to PyBullet DIRECT (no GUI).")
-        except p.error as e:
-            print(f"Could not connect to PyBullet GUI (might already be connected?): {e}")
-            try:
-                self.physics_client = p.connect(p.DIRECT)
-                print("Connected to PyBullet DIRECT instead.")
-            except p.error:
-                print("PyBullet connection already exists or failed.")
-                self.physics_client = 0
-
-        p.setTimeStep(1./60.)
-        p.setRealTimeSimulation(0)
-        p.setAdditionalSearchPath(pybullet_data.getDataPath())
-        print(f"Using PyBullet data path: {pybullet_data.getDataPath()}")
-
-    def _create_environment_objects(self) -> None:
+    def _create_environment_objects(self):
         """Create all environment objects (plane, agents, objects, walls)."""
         # Load plane
         self.plane_id = p.loadURDF("plane.urdf")
         p.changeVisualShape(
             objectUniqueId=self.plane_id,
             linkIndex=-1,
-            rgbaColor=[0.8, 0.8, 0.8, 1.0]  # Light gray
+            rgbaColor=[0.5, 0.5, 0.5, 1.0],
+            specularColor=[0, 0, 0]
         )
 
         # Create agents
@@ -94,51 +101,77 @@ class Environment:
         )
 
         # Create objects
-        self.cube_id = self._create_cube()
         self.cylinder_id = self._create_cylinder()
+        self.disk_id = self._create_disk()
+        self.pyramid_id = self._create_pyramid()
+        self.sphere_id = self._create_sphere()
 
         # Create room
         self._create_room()
 
-    def _create_agent(self, position: List[float], orientation: List[float], color: List[float]) -> int:
+    def _create_agent(self, position, orientation, color):
         """Create an agent with specified position, orientation, and color."""
+        half = 0.2
         return p.createMultiBody(
-            baseMass=3,
-            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_SPHERE, radius=0.2),
-            baseVisualShapeIndex=p.createVisualShape(p.GEOM_SPHERE, radius=0.2, rgbaColor=color),
+            baseMass=6,
+            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_BOX, halfExtents=[half]*3),
+            baseVisualShapeIndex=p.createVisualShape(p.GEOM_BOX, halfExtents=[half]*3, rgbaColor=color),
             basePosition=position,
             baseOrientation=orientation
         )
 
-    def _create_cube(self) -> int:
-        """Create the cube object."""
-        return p.createMultiBody(
-            baseMass=6,
-            baseCollisionShapeIndex=p.createCollisionShape(
-                p.GEOM_BOX, halfExtents=[0.4, 0.4, 0.4]
-            ),
-            baseVisualShapeIndex=p.createVisualShape(
-                p.GEOM_BOX, halfExtents=[0.4, 0.4, 0.4], rgbaColor=[1, 0, 0, 1]  # Red
-            ),
-            basePosition=self.cube_start_pos,
-            baseOrientation=self.cube_start_ori
-        )
-
-    def _create_cylinder(self) -> int:
+    def _create_cylinder(self):
         """Create the cylinder object."""
         return p.createMultiBody(
-            baseMass=1,
-            baseCollisionShapeIndex=p.createCollisionShape(
-                p.GEOM_CYLINDER, radius=0.2, height=1.0
-            ),
-            baseVisualShapeIndex=p.createVisualShape(
-                p.GEOM_CYLINDER, radius=0.2, length=1.0, rgbaColor=[0, 0, 1, 1]  # Blue
-            ),
+            baseMass=0.01,
+            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.7, height=0.1),
+            baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.7, length=0.1,
+                                                     rgbaColor=[1, 0, 0, 1]),
             basePosition=self.cylinder_start_pos,
             baseOrientation=self.cylinder_start_ori
         )
 
-    def _setup_dynamics(self) -> None:
+    def _create_disk(self):
+        """Create the disk object."""
+        return p.createMultiBody(
+            baseMass=0.01,
+            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0),
+            baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.2, length=1.0,
+                                                     rgbaColor=[0, 0, 1, 1]),
+            basePosition=self.disk_start_pos,
+            baseOrientation=self.disk_start_ori
+        )
+
+    def _create_pyramid(self):
+        """Create the pyramid object."""
+        base_dir = os.path.dirname(os.path.realpath(__file__))
+        urdf_path = os.path.join(base_dir, 'pyramid.urdf')
+        return p.loadURDF(urdf_path,
+                         basePosition=self.pyramid_start_pos,
+                         baseOrientation=self.pyramid_start_ori)
+
+    def _create_sphere(self):
+        """Create the sphere object."""
+        sphere_radius = 0.3
+        sphere_mass = 0.01
+        sphere_collision = p.createCollisionShape(
+            p.GEOM_SPHERE,
+            radius=sphere_radius
+        )
+        sphere_visual = p.createVisualShape(
+            p.GEOM_SPHERE,
+            radius=sphere_radius,
+            rgbaColor=[1.0, 1.0, 0.0, 1.0]  # Yellow
+        )
+        return p.createMultiBody(
+            baseMass=sphere_mass,
+            baseCollisionShapeIndex=sphere_collision,
+            baseVisualShapeIndex=sphere_visual,
+            basePosition=self.sphere_start_pos,
+            baseOrientation=self.sphere_start_ori
+        )
+
+    def _setup_dynamics(self):
         """Set up physics dynamics for all objects."""
         # Set gravity
         p.setGravity(0, 0, -9.8)
@@ -163,69 +196,50 @@ class Environment:
                 linearDamping=0.5
             )
 
-        # Cube dynamics
-        p.changeDynamics(
-            self.cube_id, -1,
-            lateralFriction=0.5,
-            restitution=0.1
-        )
+        # Object dynamics
+        for obj_id in [self.cylinder_id, self.disk_id, self.sphere_id]:
+            p.changeDynamics(
+                obj_id, -1,
+                lateralFriction=0.5,
+                restitution=0.1,
+                angularDamping=0.5,
+                linearDamping=0.5
+            )
 
-        # Cylinder dynamics
-        p.changeDynamics(
-            self.cylinder_id, -1,
-            lateralFriction=0.5,
-            restitution=0.1,
-            angularDamping=0.5,
-            linearDamping=0.5
-        )
-
-    def _create_room(self) -> None:
-        """Create a 10x10 room with walls."""
+    def _create_room(self):
+        """Create a room with walls."""
         wall_thickness = 0.2
-        wall_height = 2.0
-        room_half_size = 5.0  # Half size of the room #TODO: wall_length
-
-        # Define positions and sizes of walls relative to origin (0,0)
+        wall_height = 1.0
+        wall_length = 7.5
         walls = [
-            # Wall at +y
-            {"pos": [0, room_half_size, wall_height / 2],
-             "size": [room_half_size, wall_thickness / 2, wall_height / 2]},
-            # Wall at -y
-            {"pos": [0, -room_half_size, wall_height / 2],
-             "size": [room_half_size, wall_thickness / 2, wall_height / 2]},
-            # Wall at -x
-            {"pos": [-room_half_size, 0, wall_height / 2],
-             "size": [wall_thickness / 2, room_half_size, wall_height / 2]},
-            # Wall at +x
-            {"pos": [room_half_size, 0, wall_height / 2],
-             "size": [wall_thickness / 2, room_half_size, wall_height / 2]},
+            {'pos': [0,  wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]},
+            {'pos': [0, -wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]},
+            {'pos': [-wall_length/2, 0, wall_height/2],  'size': [wall_thickness/2, wall_length/2, wall_height/2]},
+            {'pos': [ wall_length/2, 0, wall_height/2], 'size': [wall_thickness/2, wall_length/2, wall_height/2]},
         ]
-
         self.wall_ids = []
-        for wall in walls:
-            wall_visual_shape = p.createVisualShape(
-                shapeType=p.GEOM_BOX,
-                halfExtents=wall["size"],
-                rgbaColor=[255, 255,255, 1]  # black
+        base_dir = os.path.dirname(os.path.realpath(__file__))
+        steinwand_path = os.path.join(base_dir, 'steinwand.jpg')
+        texture_id = p.loadTexture(steinwand_path)
+        
+        for w in walls:
+            cid = p.createCollisionShape(p.GEOM_BOX, halfExtents=w['size'])
+            vid = p.createVisualShape(
+                p.GEOM_BOX,
+                halfExtents=w['size'],
+                flags=p.VISUAL_SHAPE_DOUBLE_SIDED
             )
-            wall_collision_shape = p.createCollisionShape(
-                shapeType=p.GEOM_BOX,
-                halfExtents=wall["size"]
+            wid = p.createMultiBody(
+                baseCollisionShapeIndex=cid,
+                baseVisualShapeIndex=vid,
+                basePosition=w['pos'],
+                baseMass=0
             )
-            wall_id = p.createMultiBody(
-                baseCollisionShapeIndex=wall_collision_shape,
-                baseVisualShapeIndex=wall_visual_shape,
-                basePosition=wall["pos"],
-                baseMass=0  # Static walls
-            )
-
-            # Wechsle die Textur nach dem Erzeugen
             p.changeVisualShape(wid, -1, textureUniqueId=texture_id)
-
             self.wall_ids.append(wid)
 
-    def reset(self) -> None:
-        """Reset the environment to its initial state for both agents and objects."""
+    def reset(self):
+        """Reset the environment to its initial state."""
         # Reset agents
         for agent_id, start_pos, start_ori in [
             (self.agent_id_1, self.agent1_start_pos, self.agent1_start_ori),
@@ -236,81 +250,58 @@ class Environment:
 
         # Reset objects
         for obj_id, start_pos, start_ori in [
-            (self.cube_id, self.cube_start_pos, self.cube_start_ori),
-            (self.cylinder_id, self.cylinder_start_pos, self.cylinder_start_ori)
+            (self.cylinder_id, self.cylinder_start_pos, self.cylinder_start_ori),
+            (self.disk_id, self.disk_start_pos, self.disk_start_ori),
+            (self.pyramid_id, self.pyramid_start_pos, self.pyramid_start_ori),
+            (self.sphere_id, self.sphere_start_pos, self.sphere_start_ori)
         ]:
             p.resetBasePositionAndOrientation(obj_id, start_pos, start_ori)
             p.resetBaseVelocity(obj_id, linearVelocity=[0, 0, 0], angularVelocity=[0, 0, 0])
 
-        print("Environment reset.")
-
-    def get_camera_image(self, agent_id: int) -> np.ndarray:
-        """
-        Capture the current camera view from the perspective of the specified agent.
-
-        Args:
-            agent_id (int): The unique ID of the agent (self.agent_id_1 or self.agent_id_2).
-
-        Returns:
-            np.ndarray: RGB image array (height, width, 3).
-        """
+    def get_camera_image(self, agent_id):
+        """Get camera image from agent's perspective."""
         if agent_id not in [self.agent_id_1, self.agent_id_2]:
             raise ValueError(f"Invalid agent_id: {agent_id}")
 
-        # Camera offset: Position relative to agent
-        camera_offset = [0.0, 0.0, 0.3]  # Camera slightly above agent center
-
-        # Get agent position and orientation
         agent_pos, agent_ori = p.getBasePositionAndOrientation(agent_id)
-
-        # Calculate forward direction based on current yaw rotation
         euler = p.getEulerFromQuaternion(agent_ori)
-        yaw = euler[2]  # Yaw angle (rotation around Z-axis)
+        yaw = euler[2]
+        forward = np.array([math.cos(yaw), math.sin(yaw), 0])
+        eye = np.array(agent_pos) + np.array([0.0, 0.0, 0.2])
+        target = eye + forward * 2.0
 
-        # Define forward direction in world coordinates
-        forward_dir = np.array([math.cos(yaw), math.sin(yaw), 0])
-
-        # Camera position relative to agent
-        camera_eye = np.array(agent_pos) + np.array(camera_offset)
-
-        # Target point for camera to look at
-        camera_target = camera_eye + forward_dir * 2.0  # Look 2 units ahead
-
-        # Calculate view matrix
         view_matrix = p.computeViewMatrix(
-            cameraEyePosition=camera_eye.tolist(),
-            cameraTargetPosition=camera_target.tolist(),
-            cameraUpVector=[0, 0, 1]  # "Up" is Z-axis
+            cameraEyePosition=eye.tolist(),
+            cameraTargetPosition=target.tolist(),
+            cameraUpVector=[0, 0, 1]
         )
-
-        # Define projection matrix
-        projection_matrix = p.computeProjectionMatrixFOV(
-            fov=90, aspect=1.0, nearVal=0.1, farVal=10.0
+        proj_matrix = p.computeProjectionMatrixFOV(
+            fov=90,
+            aspect=640/480,
+            nearVal=0.1,
+            farVal=10.0
         )
-
-        # Capture camera image
-        width, height, rgb_img, _, _ = p.getCameraImage(
+        renderer = p.ER_BULLET_HARDWARE_OPENGL if self.use_gui else p.ER_TINY_RENDERER
+        width, height, rgb_img, depth_buffer, seg_buffer = p.getCameraImage(
             width=640, height=480,
             viewMatrix=view_matrix,
-            projectionMatrix=projection_matrix,
-            renderer=p.ER_BULLET_HARDWARE_OPENGL
+            projectionMatrix=proj_matrix,
+            renderer=renderer
         )
 
-        # Convert to RGB array
-        rgb_array = np.array(rgb_img, dtype=np.uint8).reshape(height, width, 4)
-        rgb_image = rgb_array[:, :, :3]  # Remove alpha channel
+        rgba = np.array(rgb_img, dtype=np.uint8).reshape(height, width, 4)
+        seg = np.array(seg_buffer, dtype=np.int32).reshape(height, width)
+        rgb = rgba[:, :, :3]
+
+        bg_mask = (seg < 0)
+        rgb[bg_mask] = self.sky_color
 
         return rgb
 
-    def get_state(self) -> Dict:
-        """
-        Retrieve the current state of the environment, including both agents and objects.
-
-        Returns:
-            dict: Dictionary containing the state information for agents and objects.
-        """
+    def get_state(self):
+        """Get the current state of the environment."""
         state = {}
-
+        
         # Get states for both agents
         for agent_id, agent_name in [(self.agent_id_1, "agent_1"), (self.agent_id_2, "agent_2")]:
             pos, ori = p.getBasePositionAndOrientation(agent_id)
@@ -323,84 +314,41 @@ class Environment:
             }
 
         # Get states for objects
-        for obj_id, obj_name in [(self.cube_id, "cube"), (self.cylinder_id, "cylinder")]:
+        for obj_id, obj_name in [
+            (self.cylinder_id, "cylinder"),
+            (self.disk_id, "disk"),
+            (self.pyramid_id, "pyramid"),
+            (self.sphere_id, "sphere")
+        ]:
             pos, ori = p.getBasePositionAndOrientation(obj_id)
-            vel, ang_vel = p.getBaseVelocity(obj_id)
             state[obj_name] = {
                 "position": pos,
-                "orientation": ori,
-                "velocity": vel,
-                "angular_velocity": ang_vel,
+                "orientation": ori
             }
 
         return state
 
-    def apply_action(self, agent_id: int, action_key: str) -> None:
-        """
-        Apply an action to the specified agent by applying forces/torques.
-
-        Args:
-            agent_id (int): The unique ID of the agent (self.agent_id_1 or self.agent_id_2).
-            action_key (str): The key representing the action from self.action_map.
-        """
+    def apply_action(self, agent_id, action):
+        """Apply an action to the specified agent."""
         if agent_id not in [self.agent_id_1, self.agent_id_2]:
             raise ValueError(f"Invalid agent_id: {agent_id}")
 
-        if action_key not in self.action_map:
-            print(f"Warning: Unknown action '{action_key}' for agent {agent_id}")
+        if action not in self.action_map:
             return
 
-        force_params = self.action_map[action_key]  # [vx, vy, dummy, torque_z]
-        vx, vy, _, torque_z = force_params
+        vx, vy, _, tz = self.action_map[action]
+        pos, ori = p.getBasePositionAndOrientation(agent_id)
+        mat = p.getMatrixFromQuaternion(ori)
+        fwd = np.array(mat[:3])
+        right = np.array(mat[3:6])
 
-        agent_pos, agent_ori = p.getBasePositionAndOrientation(agent_id)
+        if vx or vy:
+            p.applyExternalForce(agent_id, -1, (fwd*vx + right*vy).tolist(), pos, p.WORLD_FRAME)
+        if tz:
+            p.resetBaseVelocity(agent_id, angularVelocity=[0, 0, tz])
 
-        if action_key == "stop":
-            # Stop agent by resetting velocities
-            p.resetBaseVelocity(
-                agent_id,
-                linearVelocity=[0, 0, 0],
-                angularVelocity=[0, 0, 0]
-            )
-        else:
-            # --- Movement (Translation) ---
-            if vx != 0 or vy != 0:
-                # Transform local movement (vx, vy) to world coordinates
-                rotation_matrix = p.getMatrixFromQuaternion(agent_ori)
-                forward_vec = np.array([rotation_matrix[0], rotation_matrix[3], rotation_matrix[6]])
-                left_vec = np.array([rotation_matrix[1], rotation_matrix[4], rotation_matrix[7]])
-
-                # Combined movement force in world coordinates
-                move_force_world = forward_vec * vx + left_vec * vy
-
-                # Apply force at center of mass
-                p.applyExternalForce(
-                    objectUniqueId=agent_id,
-                    linkIndex=-1,
-                    forceObj=move_force_world.tolist(),
-                    posObj=agent_pos,
-                    flags=p.WORLD_FRAME
-                )
-
-            # --- Rotation (around Z-axis) ---
-            if torque_z != 0:
-                # Apply torque around Z-axis in world coordinates
-                p.applyExternalTorque(
-                    objectUniqueId=agent_id,
-                    linkIndex=-1,
-                    torqueObj=[0, 0, torque_z],
-                    flags=p.WORLD_FRAME
-                )
-
-    def clamp_velocity(self, agent_id: int, max_linear_velocity: float = 2.0, max_angular_velocity: float = 5.0) -> None:
-        """
-        Limit the linear and angular velocity of the specified agent.
-
-        Args:
-            agent_id (int): The unique ID of the agent.
-            max_linear_velocity (float): Maximum allowed linear velocity.
-            max_angular_velocity (float): Maximum allowed angular velocity.
-        """
+    def clamp_velocity(self, agent_id, max_linear_velocity=2.0, max_angular_velocity=5.0):
+        """Limit the linear and angular velocity of the specified agent."""
         if agent_id not in [self.agent_id_1, self.agent_id_2]:
             return
 
@@ -414,26 +362,22 @@ class Environment:
         new_lin_vel = lin_vel_np
         new_ang_vel = ang_vel_np
 
-        # Limit linear velocity
         if lin_speed > max_linear_velocity:
             new_lin_vel = (lin_vel_np / lin_speed) * max_linear_velocity
 
-        # Limit angular velocity (especially around Z)
         if abs(ang_vel_np[2]) > max_angular_velocity:
             new_ang_vel[2] = math.copysign(max_angular_velocity, ang_vel_np[2])
 
-        # Apply limited velocities if changes were needed
         if lin_speed > max_linear_velocity or abs(ang_vel_np[2]) > max_angular_velocity:
             p.resetBaseVelocity(agent_id, linearVelocity=new_lin_vel.tolist(), angularVelocity=new_ang_vel.tolist())
 
-    def step_simulation(self) -> None:
+    def step_simulation(self):
         """Step the simulation forward and apply velocity clamping."""
         p.stepSimulation()
-        # Apply velocity clamping to both agents
         self.clamp_velocity(self.agent_id_1)
         self.clamp_velocity(self.agent_id_2)
 
-    def close(self) -> None:
+    def close(self):
         """Disconnect the simulation."""
         try:
             p.disconnect(physicsClientId=self.physics_client)
