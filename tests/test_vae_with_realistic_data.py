@@ -8,7 +8,7 @@ from PIL import Image
 
 # Add the src directory to the Python path so we can import the VAE module
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'src')))
-from models import VAE
+from models.networks import VAE
 
 class TestVAEWithRealisticData(unittest.TestCase):
     """Tests for the VAE using more realistic data scenarios and edge cases."""

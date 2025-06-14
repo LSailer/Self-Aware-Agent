@@ -1,3 +1,86 @@
+# TASK.md
+
+**Last Updated**: June 14, 2025
+
+This document tracks the active work, milestones, and backlog for the project. Its primary purpose is to guide the refactoring process and subsequent feature development.
+
+## Project Goal
+
+The main goal is to refactor the existing codebase into a single, unified, and modular architecture. This new architecture should handle both single-agent and multi-agent simulations seamlessly, treating the single-agent case as a special instance of the multi-agent system where `num_agents = 1`.
+
+---
+
+## ✅ Active Milestone: Refactor to a Generic Multi-Agent Architecture
+
+This milestone focuses on restructuring the project files and modifying the core components to be flexible and reusable.
+
+### A. Project Structure & Configuration
+
+- [x] **Create New Directory Structure**:
+    - [x] Create top-level directories: `configs/`, `scripts/`, `src/`.
+    - [x] Create sub-directories: `src/common/`, `src/controllers/`, `src/envs/`, `src/models/`.
+- [x] **Relocate Existing Files**: Move the current `.py` scripts into their corresponding new directories as outlined in the refactoring plan.
+- [x] **Create Configuration Files**:
+    - [x] Create `configs/base_config.py` to hold all shared parameters (learning rates, buffer size, etc.).
+    - [x] Create `configs/single_agent_config.py` which inherits from `base_config.py` and sets `NUM_AGENTS = 1`.
+    - [x] Create `configs/multi_agent_config.py` which inherits from `base_config.py` and sets `NUM_AGENTS = 2`.
+
+### B. Environment (`src/envs/`)
+
+- [x] **Make Environment Generic**: Modify the `Environment` class in `src/envs/pybullet_env.py`.
+    - [x] The `__init__` method should accept a `num_agents` parameter.
+    - [x] Agent creation should be done in a loop, storing agent IDs in a list (e.g., `self.agent_ids`).
+    - [x] Functions like `reset`, `get_state`, `apply_action`, and `get_camera_image` must be updated to work with the `self.agent_ids` list, making them generic for any number of agents.
+
+### C. Models (`src/models/`)
+
+- [x] **Unify Model Usage**:
+    - [x] Ensure the `RNNModel` in `src/models/networks.py` is used for both single and multi-agent setups by passing the correct `num_agents` parameter during initialization.
+    - [x] The `VAE` and `SelfModel` are already reusable and need no structural changes, just proper instantiation in the controllers.
+
+### D. Controllers (`src/controllers/`)
+
+- [x] **Unify Controller Interface**: This is the most critical step for abstraction.
+    - [x] Refactor `curiosity_driven_agent.py` into `src/controllers/single_agent_controller.py`.
+    - [x] Refactor `multi_agent_controller.py` to align with the new structure.
+    - [x] **Define a Common API**: Ensure both `SingleAgentController` and `MultiAgentController` have the same core methods so the main script can interact with them identically.
+        - `choose_actions(observations: list) -> list`
+        - `store_experience(...)`
+        - `update_models() -> dict`
+
+### E. Common Utilities (`src/common/`)
+
+- [x] **Create a Generic Replay Buffer**:
+    - [x] Implement a `ReplayBuffer` class in `src/common/replay_buffer.py`.
+    - [x] Define a generic `Experience` tuple that can hold lists of observations, actions, etc., to support a variable number of agents.
+    - [x] Update both controllers to use this new, shared replay buffer.
+
+### F. Main Script (`scripts/`)
+
+- [x] **Create a Generic Runner**:
+    - [x] Create a new `scripts/main.py` based on the logic in the old `simulation.py`.
+    - [x] Use Python's `argparse` to allow specifying a config file from the command line (e.g., `python scripts/main.py --config configs.multi_agent_config`).
+    - [x] The script should dynamically load the specified config module.
+    - [x] Implement a **single, generic main loop** that initializes the correct controller based on the config and interacts with it using the common API defined in step D.
+
+### G. Testing and Validation
+
+- [x] **Test Single-Agent Simulation**: Run the refactored code with the `single_agent_config.py` and verify it produces expected behavior, logs, and video.
+- [ ] **Test Multi-Agent Simulation**: Run the refactored code with the `multi_agent_config.py` and verify it also works as expected.
+
+---
+
+## 📚 Backlog / Future Work
+
+- [ ] [cite_start]Implement unit tests for the refactored components.
+- [ ] Compare performance (e.g., curiosity curves, interaction frequency) between the single and multi-agent setups.
+- [ ] Explore more complex emergent behaviors in the multi-agent setting (e.g., cooperation, competition).
+
+---
+
+
+
+
 ##   Step 1: Single-Agent Setup (Completed)
 
 ###   Environment & Core Functionality

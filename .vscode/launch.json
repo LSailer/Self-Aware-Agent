@@ -2,6 +2,30 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Run Single Agent Simulation",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/main.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/",
+      "args": [
+        "--config",
+        "configs.single_agent_config"
+      ]
+    },
+    {
+      "name": "Run Multi Agent Simulation",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/main.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}/",
+      "args": [
+        "--config",
+        "configs.multi_agent_config"
+      ]
+    },
+    {
       "name": "Run Simulation",
       "type": "debugpy",
       "request": "launch",
