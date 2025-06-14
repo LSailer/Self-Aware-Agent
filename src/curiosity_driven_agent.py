@@ -1,3 +1,5 @@
+from enum import Enum
+import os
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -6,12 +8,18 @@ import matplotlib.pyplot as plt
 from torchvision import transforms as T
 from collections import deque, namedtuple
 import random
-
-from utility import visualize_vae_reconstruction
+import math
+from utility import visualize_rnn_prediction, visualize_vae_reconstruction
 
 # Define the Experience tuple for the replay buffer
 Experience = namedtuple('Experience',
                         ('raw_image', 'action_key', 'action_array', 'reward', 'next_raw_image', 'done'))
+
+#ENUMs for action selection
+class ActionSelection(Enum):
+    EPSILON_GREEDY = "epsilon_greedy"
+    BOLTZMANN = "boltzmann"
+    UCB = "ucb"
 
 class CuriosityDrivenAgent:
     def __init__(self, actions, latent_dim=32, rnn_hidden_dim=256, buffer_size=10000, batch_size=64, device='cpu'):
@@ -76,38 +84,15 @@ class CuriosityDrivenAgent:
         # Initialize hidden state for a batch size of 1
         self.current_h = self.rnn_model.init_hidden(batch_size=1, device=self.device)
 
-    def calculate_prediction_error(self, predicted_next_z, actual_next_z, predicted_error=None):
-        """
-        Calculate prediction errors and losses between predicted and actual values.
-        
-        Args:
-            predicted_next_z (torch.Tensor): RNN's prediction of next latent state.
-            actual_next_z (torch.Tensor): Actual next latent state.
-            predicted_error (torch.Tensor, optional): Self-model's prediction of the error.
-        
-        Returns:
-            dict: Dictionary containing various error metrics:
-                - 'actual_error': MSE between predicted and actual next state
-                - 'error_loss': MSE between predicted and actual error (if predicted_error provided)
-        """
-        # Calculate actual prediction error without in-place operations
-        actual_error = F.mse_loss(predicted_next_z, actual_next_z, reduction='none')
-        actual_error = actual_error.mean(dim=1)  # Separate mean operation
-        
-        result = {
-            'actual_error': actual_error
-        }
-        
-        # If predicted_error is provided, calculate error loss
-        if predicted_error is not None:
-            # Ensure proper shape for comparison
-            actual_error_reshaped = actual_error.unsqueeze(1)
-            error_loss = F.mse_loss(predicted_error, actual_error_reshaped)
-            result['error_loss'] = error_loss
-            
-        return result
+    def choose_action(self, action_selection=ActionSelection.EPSILON_GREEDY, epsilon=0.2, temperature=1.0, c=1.0):
+        if action_selection == ActionSelection.EPSILON_GREEDY:
+            return self.choose_action_epsilon(epsilon=epsilon)
+        elif action_selection == ActionSelection.BOLTZMANN:
+            return self.choose_action_Boltzmann(temperature=temperature)
+        else:
+            return self.choose_action_UCB(c=c)
 
-    def choose_action(self, epsilon=0.2):
+    def choose_action_epsilon(self, epsilon=0.2):
         """
         Choose an action based on maximizing the Self-Model prediction error.
         Uses the current latent state z_t and RNN hidden state h_t.
@@ -147,7 +132,91 @@ class CuriosityDrivenAgent:
 
         action_array = self.actions[action_key]
         return action_key, np.array(action_array, dtype=np.float32)
+    
+    def choose_action_Boltzmann(self, temperature=1.0):
+        """
+        Choose an action using Softmax (Boltzmann) exploration over predicted rewards.
 
+        Args:
+            temperature (float): Controls exploration. Higher = more random; lower = more greedy.
+        Returns:
+            tuple: (action_key, action_array)
+        """
+        if self.current_z is None or self.current_h is None:
+            raise ValueError("Agent state (z or h) not initialized. Call encode_image and reset_hidden_state first.")
+
+        self.self_model.eval()
+        with torch.no_grad():
+            h_state_for_self_model = self.current_h[0]  # (NumLayers, 1, HiddenDim)
+
+            action_keys = list(self.actions.keys())
+            reward_values = []
+
+            for key in action_keys:
+                val_array = self.actions[key]
+                action_tensor = torch.tensor(val_array, dtype=torch.float32).unsqueeze(0).to(self.device)
+                predicted_reward = self.self_model(self.current_z, h_state_for_self_model, action_tensor)
+                reward_values.append(predicted_reward.item())
+
+            # Softmax über die Reward-Werte
+            reward_tensor = torch.tensor(reward_values, dtype=torch.float32)
+            probs = F.softmax(reward_tensor / temperature, dim=0).cpu().numpy()
+
+            # Auswahl einer Aktion basierend auf Softmax-Wahrscheinlichkeiten
+            action_index = np.random.choice(len(action_keys), p=probs)
+            action_key = action_keys[action_index]
+
+        self.self_model.train()
+        action_array = self.actions[action_key]
+        return action_key, np.array(action_array, dtype=np.float32)
+
+
+
+    def choose_action_UCB(self, c=1.0):
+        """
+        Choose an action using Upper Confidence Bound (UCB) strategy.
+
+        Args:
+            c (float): Exploration constant. Higher = more exploration.
+        Returns:
+            tuple: (action_key, action_array)
+        """
+        if self.current_z is None or self.current_h is None:
+            raise ValueError("Agent state (z or h) not initialized. Call encode_image and reset_hidden_state first.")
+
+        # Initialisierung der Zählungen, falls nicht vorhanden
+        if not hasattr(self, "action_counts"):
+            self.action_counts = {key: 1 for key in self.actions}  # starte mit 1 um 0-Division zu vermeiden
+            self.total_steps = len(self.actions)
+
+        self.self_model.eval()
+        with torch.no_grad():
+            h_state_for_self_model = self.current_h[0]
+            ucb_scores = []
+            action_keys = list(self.actions.keys())
+
+            for key in action_keys:
+                val_array = self.actions[key]
+                action_tensor = torch.tensor(val_array, dtype=torch.float32).unsqueeze(0).to(self.device)
+                predicted_reward = self.self_model(self.current_z, h_state_for_self_model, action_tensor).item()
+
+                # UCB-Wert berechnen
+                count = self.action_counts.get(key, 1)
+                bonus = c * math.sqrt(math.log(self.total_steps + 1) / count)
+                ucb_score = predicted_reward + bonus
+                ucb_scores.append((ucb_score, key))
+
+            # Wähle Aktion mit höchstem UCB-Wert
+            _, action_key = max(ucb_scores)
+
+        # Zählungen aktualisieren
+        self.action_counts[action_key] += 1
+        self.total_steps += 1
+        self.self_model.train()
+
+        action_array = self.actions[action_key]
+        return action_key, np.array(action_array, dtype=np.float32)
+    
     def store_experience(self, raw_image, action_key, action_array, reward, next_raw_image, done):
         """ Stores an experience tuple in the replay buffer """
         # Note: We store raw images and re-process/encode them during training updates
@@ -170,7 +239,7 @@ class CuriosityDrivenAgent:
         # Detach actual_next_z as it's the target«
         return reward.unsqueeze(1) # Shape: (Batch, 1)
 
-    def update_models(self, visualize=False, step=0):
+    def update_models(self, visualize=False, step=0, log_dir="logs", num_agents=1, visualize_vae_after_steps=2, visualize_rnn_after_steps=2):
         """ Samples a batch from the replay buffer and updates VAE, RNN, and SelfModel """
         if len(self.replay_buffer) < self.batch_size:
             return None # Not enough samples to train yet
@@ -242,6 +311,41 @@ class CuriosityDrivenAgent:
         
         self_loss.backward()
         self.optimizer_self.step()
+
+        # --- 5. Visualize RNN Prediction ---
+        # VAE visualization
+        if step % visualize_vae_after_steps == 0:  # Visualize every 1000 steps
+            if processed_images.nelement() > 0:
+                self.vae.eval()
+                with torch.no_grad():
+                    recon_x_all_vis, _, _, _ = self.vae(processed_images[:min(8*num_agents, processed_images.shape[0])])  # Take max 8 pairs
+                visualize_path = os.path.join(log_dir, "vae_reconstructions")
+                visualize_vae_reconstruction(processed_images[:min(8*num_agents, processed_images.shape[0])],
+                                          recon_x_all_vis,
+                                          step,
+                                          save_dir=visualize_path)
+                self.vae.train()
+
+        # RNN prediction visualization
+        if step % visualize_rnn_after_steps == 0 and step > 0:  # Different period for RNN viz
+            self.vae.eval()  # VAE decoder will be used in eval mode
+            
+            if processed_next_images.nelement() > 0 and predicted_z_t1.nelement() > 0:
+                rnn_pred_save_dir = os.path.join(log_dir, "rnn_predictions")
+                # 1) Ziel-Device bestimmen
+                target_device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+                # 2) Tensoren auf dasselbe Device verschieben
+                actual_frames = processed_next_images.to(target_device)
+                pred_frames   = predicted_z_t1.detach().to(target_device)
+                # 3) Visualisierung aufrufen
+                visualize_rnn_prediction(
+                    actual_next_frames     = actual_frames,          # Ground truth o_{t+1}
+                    rnn_predicted_latent_z = pred_frames,            # RNN's z_{t+1} prediction
+                    vae_decode_function    = self.vae.decode,        # VAE-Decoder
+                    step                   = step,
+                    agent_id               = 0,                     # Agent ID für Dateinamen
+                    save_dir               = rnn_pred_save_dir
+                )
 
         # Return losses for logging
         return {

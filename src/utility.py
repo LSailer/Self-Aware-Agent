@@ -11,7 +11,9 @@ def visualize_vae_reconstruction(originals, reconstructions, step, save_dir="log
     Args:
         originals (torch.Tensor): Batch of original images (B, C, H, W), normalized [0, 1].
                                   Expected to be on CPU.
+                                  Expected to be on CPU.
         reconstructions (torch.Tensor): Batch of reconstructed images (B, C, H, W), normalized [0, 1].
+                                        Expected to be on CPU.
                                         Expected to be on CPU.
         step (int): The current simulation step, used for filename.
         save_dir (str): Directory to save the image grid.

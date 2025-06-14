@@ -218,7 +218,11 @@ class Environment:
                 basePosition=wall["pos"],
                 baseMass=0  # Static walls
             )
-            self.wall_ids.append(wall_id)
+
+            # Wechsle die Textur nach dem Erzeugen
+            p.changeVisualShape(wid, -1, textureUniqueId=texture_id)
+
+            self.wall_ids.append(wid)
 
     def reset(self) -> None:
         """Reset the environment to its initial state for both agents and objects."""
@@ -296,7 +300,7 @@ class Environment:
         rgb_array = np.array(rgb_img, dtype=np.uint8).reshape(height, width, 4)
         rgb_image = rgb_array[:, :, :3]  # Remove alpha channel
 
-        return rgb_image
+        return rgb
 
     def get_state(self) -> Dict:
         """
