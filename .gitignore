@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # This .gitignore file should be placed at the root of your Unity project directory
 #
 # Get latest from https://github.com/github/gitignore/blob/main/Unity.gitignore
@@ -76,4 +76,7 @@ crashlytics-build.properties
 
 runs/metrics/
 
+*.mp4
 camera_feed.mp4
+
+logs/
