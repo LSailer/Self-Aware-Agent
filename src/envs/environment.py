@@ -115,7 +115,7 @@ class Environment:
         return p.createMultiBody(baseMass=0.01, baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_SPHERE, radius=0.3), baseVisualShapeIndex=p.createVisualShape(p.GEOM_SPHERE, radius=0.3, rgbaColor=[1.0, 1.0, 0.0, 1.0]), basePosition=self.sphere_start_pos, baseOrientation=self.sphere_start_ori)
 
     def _create_room(self):
-        wall_thickness, wall_height, wall_length = 0.2, 2.0, 7.5
+        wall_thickness, wall_height, wall_length = 0.2, 1.0, 7.5
         walls = [{'pos': [0, wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]}, {'pos': [0, -wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]}, {'pos': [-wall_length/2, 0, wall_height/2], 'size': [wall_thickness/2, wall_length/2, wall_height/2]}, {'pos': [wall_length/2, 0, wall_height/2], 'size': [wall_thickness/2, wall_length/2, wall_height/2]}]
         texture_id = p.loadTexture(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'steinwand.jpg'))
         for w in walls:
