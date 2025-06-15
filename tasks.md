@@ -211,6 +211,10 @@ This milestone focuses on restructuring the project files and modifying the core
         * [X] Passe die `annotate_frame`-Methode an, um relevante Infos (Curiosity, Self-Loss) anzuzeigen. (Bereits vorhanden, wird nun pro Agent im Sim-Loop gefüttert).
         * [X] Stelle sicher, dass in `simulation.py` zwei Recorder instanziiert und mit den jeweiligen Kamerabildern und Daten gefüttert werden, um separate Videos zu erzeugen.
 
+### F. Plots 
+    * [ ] RNN-Prediction, VAE  add
+    * [ ]  
+
 ###   F. Analyse & Vergleich
 
    * [ ] Analysiere emergente Verhaltensweisen: Beobachte, ob Kooperation, Konkurrenz oder spezialisierte Rollen auftreten.
