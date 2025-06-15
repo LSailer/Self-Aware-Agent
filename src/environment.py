@@ -124,7 +124,9 @@ class Environment:
             {'pos': [ wall_length/2, 0, wall_height/2], 'size': [wall_thickness/2, wall_length/2, wall_height/2]},
         ]
         self.wall_ids = []
-        texture_id = p.loadTexture("\src\steinwand.jpg") 
+        base_dir = os.path.dirname(os.path.realpath(__file__))
+        steinwand_path = os.path.join(base_dir, 'steinwand.jpg')
+        texture_id = p.loadTexture(steinwand_path) 
         for w in walls:
             cid = p.createCollisionShape(p.GEOM_BOX, halfExtents=w['size'])
 

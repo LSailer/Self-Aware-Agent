@@ -2,12 +2,13 @@
 #SBATCH --job-name=RunSimulation
 #SBATCH --output=logs/Logs%j.out
 #SBATCH --error=logs/Logs%j.err
-#SBATCH --time=00:30:00
+#SBATCH --time=72:00:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=127G
 #SBATCH --gres=gpu:1
-#SBATCH --partition=dev_gpu_h100
+#SBATCH --partition=gpu_h100
+#SBATCH --mail-user=thomas.kling@uni-ulm.de
 echo "Job started ..." 
 
 
@@ -22,6 +23,7 @@ echo "Job completed."
 # squeue -> show the list
 # scancel <job_id> -> cancel job
 # sinfo_t_idle
+# squeue --start
 
 
 # conda activate Self_Aware_Agent
