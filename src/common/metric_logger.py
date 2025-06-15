@@ -23,12 +23,7 @@ class MetricLogger:
         # Define CSV fields
         self.fields = [
             "Step", "Agent_ID",
-            "Position_X", "Position_Y", "Position_Z",
-            "Velocity_X", "Velocity_Y", "Velocity_Z",
-            "Orientation_W", "Orientation_X", "Orientation_Y", "Orientation_Z",
-            "Angular_Velocity_X", "Angular_Velocity_Y", "Angular_Velocity_Z",
             "Action_Type",
-            "Action_Vector_0", "Action_Vector_1", "Action_Vector_2", "Action_Vector_3",
             "Curiosity_Reward",
             "World_Loss",
             "Self_Loss",
@@ -57,9 +52,7 @@ class MetricLogger:
         self,
         step,
         agent_id, 
-        agent_pos, agent_vel, agent_ori, agent_ang_vel,
         action_type,
-        action_vector,
         curiosity_reward, 
         world_loss,       
         self_loss,        
@@ -69,20 +62,10 @@ class MetricLogger:
         is_interacting_with_other_agent
     ):
         """Log metrics to a list and then to CSV."""
-        # Ensure action_vector has the expected length (e.g., 4)
-        action_vec_padded = list(action_vector) + [0] * (max(0, 4 - len(action_vector))) # Ensure at least 4 elements, pad with 0 if less
-
         log_entry = {
             "Step": step,
             "Agent_ID": agent_id,
-            "Position_X": agent_pos[0], "Position_Y": agent_pos[1], "Position_Z": agent_pos[2],
-            "Velocity_X": agent_vel[0], "Velocity_Y": agent_vel[1], "Velocity_Z": agent_vel[2],
-            "Orientation_W": agent_ori[3], "Orientation_X": agent_ori[0], 
-            "Orientation_Y": agent_ori[1], "Orientation_Z": agent_ori[2],
-            "Angular_Velocity_X": agent_ang_vel[0], "Angular_Velocity_Y": agent_ang_vel[1], "Angular_Velocity_Z": agent_ang_vel[2],
             "Action_Type": action_type,
-            "Action_Vector_0": action_vec_padded[0], "Action_Vector_1": action_vec_padded[1],
-            "Action_Vector_2": action_vec_padded[2], "Action_Vector_3": action_vec_padded[3],
             "Curiosity_Reward": curiosity_reward,
             "World_Loss": world_loss,
             "Self_Loss": self_loss,

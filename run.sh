@@ -13,7 +13,10 @@ echo "Job started ..."
 
 
 echo "Using Python: $(which python) — version: $(python --version)"
-python src/simulation.py
+#python src/main.py --config configs.multi_agent_config
+python src/main.py --config configs.single_agent_config
+
+
 
 
 echo "Job completed."

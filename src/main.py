@@ -60,6 +60,7 @@ def run(config):
     print(f"Initialized {config.CONTROLLER_TYPE} controller for {config.NUM_AGENTS} agent(s).")
 
     # --- Main Simulation Loop ---
+    last_loss_dict = {}
     try:
         env.reset()
         obs_t_list = [env.get_camera_image(agent_id) for agent_id in env.agent_ids]
@@ -91,36 +92,31 @@ def run(config):
             if step > config.BATCH_SIZE and step % config.UPDATE_EVERY_N_STEPS == 0:
                 loss_dict = controller.update_models()
 
-            # 7. Logging
-            if loss_dict:
-                current_env_state = env.get_state()
-                agent_agent_interaction = check_agent_agent_interaction(env)
+                if loss_dict:
+                    agent_agent_interaction = check_agent_agent_interaction(env)
 
-                for i, agent_id in enumerate(env.agent_ids):
-                    agent_state = current_env_state[f'agent_{i}']
-                    agent_obj_interaction = check_agent_object_interaction(env, agent_id)
-
-                    logger.log_metrics(
-                        step=step, agent_id=i,
-                        agent_pos=agent_state['position'], agent_vel=agent_state['velocity'],
-                        agent_ori=agent_state['orientation'], agent_ang_vel=agent_state['angular_velocity'],
-                        action_type=action_keys[i], action_vector=action_arrays[i],
-                        # Use .get() for safe access to loss values
-                        curiosity_reward=loss_dict.get(f'avg_curiosity_reward_{i}', loss_dict.get('avg_curiosity_reward', 0.0)),
-                        self_loss=loss_dict.get(f'self_loss_{i}', loss_dict.get('self_loss', 0.0)),
-                        world_loss=loss_dict.get('rnn_loss', 0.0),
-                        vae_loss=loss_dict.get('vae_loss', 0.0),
-                        vae_kld_loss=loss_dict.get('vae_kld_loss', 0.0),
-                        is_interacting_object=agent_obj_interaction,
-                        is_interacting_with_other_agent=agent_agent_interaction
-                    )
+                    for i, agent_id in enumerate(env.agent_ids):
+                        agent_obj_interaction = check_agent_object_interaction(env, agent_id)
+                        last_loss_dict = loss_dict
+                        logger.log_metrics(
+                            step=step, agent_id=i,
+                            action_type=action_keys[i],
+                            # Use .get() for safe access to loss values
+                            curiosity_reward=loss_dict.get(f'avg_curiosity_reward_{i}', loss_dict.get('avg_curiosity_reward', 0.0)),
+                            self_loss=loss_dict.get(f'self_loss_{i}', loss_dict.get('self_loss', 0.0)),
+                            world_loss=loss_dict.get('rnn_loss', 0.0),
+                            vae_loss=loss_dict.get('vae_loss', 0.0),
+                            vae_kld_loss=loss_dict.get('vae_kld_loss', 0.0),
+                            is_interacting_object=agent_obj_interaction,
+                            is_interacting_with_other_agent=agent_agent_interaction
+                        )
                 
                 print(f"Step {step}/{config.MAX_STEPS} | VAE Loss: {loss_dict.get('vae_loss', 0):.4f} | RNN Loss: {loss_dict.get('rnn_loss', 0):.4f}")
 
-            # 8. Video Recording
+                # 7. Video Recording
             for i in range(config.NUM_AGENTS):
-                cur_reward = loss_dict.get(f'avg_curiosity_reward_{i}', loss_dict.get('avg_curiosity_reward', 0.0)) if loss_dict else 0.0
-                self_loss = loss_dict.get(f'self_loss_{i}', loss_dict.get('self_loss', 0.0)) if loss_dict else 0.0
+                cur_reward = last_loss_dict.get(f'avg_curiosity_reward_{i}', last_loss_dict.get('avg_curiosity_reward', 0.0)) if last_loss_dict else 0.0
+                self_loss = last_loss_dict.get(f'self_loss_{i}', last_loss_dict.get('self_loss', 0.0)) if last_loss_dict else 0.0
                 
                 annotated_frame = recorders[i].annotate_frame(obs_tp1_list[i], step, cur_reward, self_loss)
                 if annotated_frame is not None:

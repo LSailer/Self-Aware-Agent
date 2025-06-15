@@ -66,7 +66,7 @@ This milestone focuses on restructuring the project files and modifying the core
 ### G. Testing and Validation
 
 - [x] **Test Single-Agent Simulation**: Run the refactored code with the `single_agent_config.py` and verify it produces expected behavior, logs, and video.
-- [ ] **Test Multi-Agent Simulation**: Run the refactored code with the `multi_agent_config.py` and verify it also works as expected.
+- [x] **Test Multi-Agent Simulation**: Run the refactored code with the `multi_agent_config.py` and verify it also works as expected.
 
 ---
 

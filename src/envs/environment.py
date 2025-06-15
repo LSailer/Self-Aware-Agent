@@ -18,7 +18,7 @@ class Environment:
         self.use_gui = use_gui
         self.num_agents = num_agents
         self.agent_ids = []
-
+        self.wall_ids = []
         # -- Define agent start configurations (extensible for more agents) --
         self.agent_start_configs = [
             {'pos': [-1.0, 0.0, 0.2], 'ori': p.getQuaternionFromEuler([0, 0, 0]), 'color': [0, 1, 0, 1]},       # Agent 0 (Green)
@@ -31,7 +31,7 @@ class Environment:
         # -- Define object start positions --
         self.cylinder_start_pos = [2.4, 0.2, 0.5]
         self.cylinder_start_ori = [0, 0, 0, 1]
-        self.disk_start_pos = [0.0, 2.0, 0]
+        self.disk_start_pos = [0.0, 2.0, 0.5]
         self.disk_start_ori = [0, 0, 0, 1]
         self.pyramid_start_pos = [-2.0, -0.5, 0.0]
         self.pyramid_start_ori = [0, 0, 0, 1]
@@ -40,13 +40,13 @@ class Environment:
 
         # -- Action Map (identical for all agents) --
         self.action_map = {
-            'forward':      [50.0,  0,    0, 0],
-            'backward':     [-50.0, 0,    0, 0],
-            'left':         [0,    -50.0, 0, 0],
-            'right':        [0,     50.0, 0, 0],
-            'rotate_left':  [0,     0,    0, 5.0],
-            'rotate_right': [0,     0,    0, -5.0],
-            'stop':         [0,     0,    0, 0],
+            'forward':      [1.5,  0,    0, 0],    # Target linear velocity (local x, y), target angular velocity (world z)
+            'backward':     [-1.5, 0,    0, 0],
+            'left':         [0,   -1.5,  0, 0],    # Using your convention of negative vy for left
+            'right':        [0,    1.5,  0, 0],    # and positive vy for right
+            'rotate_left':  [0,     0,   0, 2.5],
+            'rotate_right': [0,     0,   0, -2.5],
+            'stop':         [0,     0,   0, 0],
         }
 
         # -- Initialize PyBullet --
@@ -115,19 +115,45 @@ class Environment:
         return p.createMultiBody(baseMass=0.01, baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_SPHERE, radius=0.3), baseVisualShapeIndex=p.createVisualShape(p.GEOM_SPHERE, radius=0.3, rgbaColor=[1.0, 1.0, 0.0, 1.0]), basePosition=self.sphere_start_pos, baseOrientation=self.sphere_start_ori)
 
     def _create_room(self):
-        wall_thickness, wall_height, wall_length = 0.2, 1.0, 7.5
+        wall_thickness, wall_height, wall_length = 0.2, 2.0, 7.5
         walls = [{'pos': [0, wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]}, {'pos': [0, -wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]}, {'pos': [-wall_length/2, 0, wall_height/2], 'size': [wall_thickness/2, wall_length/2, wall_height/2]}, {'pos': [wall_length/2, 0, wall_height/2], 'size': [wall_thickness/2, wall_length/2, wall_height/2]}]
         texture_id = p.loadTexture(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'steinwand.jpg'))
         for w in walls:
             wid = p.createMultiBody(baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_BOX, halfExtents=w['size']), baseVisualShapeIndex=p.createVisualShape(p.GEOM_BOX, halfExtents=w['size'], flags=p.VISUAL_SHAPE_DOUBLE_SIDED), basePosition=w['pos'], baseMass=0)
             p.changeVisualShape(wid, -1, textureUniqueId=texture_id)
+            self.wall_ids.append(wid)
 
     def _setup_dynamics(self):
         """Set up physics dynamics for all objects."""
         p.setGravity(0, 0, -9.8)
         for agent_id in self.agent_ids:
             p.changeDynamics(agent_id, -1, lateralFriction=1.0, rollingFriction=0.005, spinningFriction=0.005, restitution=0.0, angularDamping=0.5, linearDamping=0.5)
-        # Add other dynamics setups as needed
+        # Agent dynamics: Make the agent slightly bouncy
+        for agent_id in self.agent_ids:
+            p.changeDynamics(
+                agent_id, -1,
+                lateralFriction=0.9,
+                restitution=0.4,
+                angularDamping=0.5,
+                linearDamping=0.5
+            )
+
+        # Movable object dynamics: Make them bouncy and have some friction
+        movable_objects = [self.cylinder_id, self.disk_id, self.pyramid_id, self.sphere_id]
+        for obj_id in movable_objects:
+            p.changeDynamics(
+                obj_id, -1,
+                lateralFriction=0.3,      # Standard friction
+                restitution=0.6           # Make objects quite bouncy
+            )
+
+        # Wall dynamics: Give the walls some bounciness too
+        for wall_id in self.wall_ids:
+            p.changeDynamics(
+                wall_id, -1,
+                lateralFriction=1.0,      # High friction for walls
+                restitution=0.5           # Walls have bounce
+            )
 
     def reset(self):
         """Reset the environment to its initial state for all agents and objects."""
@@ -178,21 +204,35 @@ class Environment:
         return state
 
     def apply_action(self, agent_id, action_key):
-        """Apply an action from the action_map to the specified agent."""
+        """Apply an action from the action_map to the specified agent using velocity control."""
         if agent_id not in self.agent_ids:
             raise ValueError(f"Invalid agent_id: {agent_id}. Valid IDs are {self.agent_ids}")
         if action_key not in self.action_map:
             print(f"Warning: Action '{action_key}' not in action_map. No action taken.")
             return
 
-        vx, vy, _, tz = self.action_map[action_key]
-        pos, ori = p.getBasePositionAndOrientation(agent_id)
+        # Get target local linear velocities and world angular velocity
+        target_vx_local, target_vy_local, _, target_wz_world = self.action_map[action_key]
+
+        _, ori = p.getBasePositionAndOrientation(agent_id)
         mat = p.getMatrixFromQuaternion(ori)
-        fwd, right = np.array(mat[:3]), np.array(mat[3:6])
+        
+        # Get agent's local axes from rotation matrix
+        fwd = np.array([mat[0], mat[1], mat[2]])
+        right = np.array([mat[3], mat[4], mat[5]])
 
-        if vx or vy: p.applyExternalForce(agent_id, -1, (fwd*vx + right*vy), pos, p.WORLD_FRAME)
-        if tz: p.resetBaseVelocity(agent_id, angularVelocity=[0, 0, tz])
+        # Convert local target velocity to world frame
+        target_linear_velocity_world = fwd * target_vx_local + right * target_vy_local
+        
+        # Get current velocity to preserve z-component (for gravity)
+        current_linear_velocity, _ = p.getBaseVelocity(agent_id)
+        target_linear_velocity_world[2] = current_linear_velocity[2]
 
+        # Set the new velocity
+        p.resetBaseVelocity(agent_id, 
+                            linearVelocity=target_linear_velocity_world.tolist(), 
+                            angularVelocity=[0, 0, target_wz_world])
+    
     def clamp_velocity(self, agent_id, max_linear_velocity=2.0, max_angular_velocity=5.0):
         """Limit the linear and angular velocity of the specified agent."""
         if agent_id not in self.agent_ids: return
