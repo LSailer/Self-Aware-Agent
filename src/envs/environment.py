@@ -51,6 +51,7 @@ class Environment:
             'right':        [0,    1.5,  0, 0],    # and positive vy for right
             'rotate_left':  [0,     0,   0, 2.5],
             'rotate_right': [0,     0,   0, -2.5],
+            'stop':         [0,     0,   0, 0],
         }
 
         # -- Initialize PyBullet --
