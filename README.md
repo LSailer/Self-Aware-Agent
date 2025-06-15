@@ -7,7 +7,6 @@ This project explores intrinsically motivated agents in a physics-based simulati
 
 The simulation uses PyBullet to model a simple environment with a spherical agent, a cube, and a cylinder. The agent learns to interact with the environment based on a curiosity-driven reward mechanism.  The agent's curiosity is driven by a Self Model that predicts the World Model's prediction error.
 
-##   Key Components
 
 * `environment.py`:  Sets up the PyBullet environment, manages the agent and objects, and provides sensor input (camera images).
 * `curiosity_driven_agent.py`:  Defines the agent, which uses a VAE to encode images, an RNN to model temporal dynamics, and a Self Model to predict curiosity.
