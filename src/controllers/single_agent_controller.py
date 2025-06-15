@@ -6,6 +6,7 @@ import numpy as np
 import os
 import math
 
+from common.utility import visualize_rnn_prediction, visualize_vae_reconstruction
 from models.networks import VAE, RNNModel, SelfModel
 from common.replay_buffer import ReplayBuffer
 from common.enums import ActionSelection
@@ -131,8 +132,6 @@ class SingleAgentController:
 
     def choose_actions(self, obs_list: list) -> (list, list): # type: ignore
         """Chooses an action based on the configured policy."""
-        self.current_step += 1
-        
         if self.config.ACTION_SELECTION_TYPE == ActionSelection.EPSILON_GREEDY:
             action_idx = self._choose_action_epsilon_greedy()
         elif self.config.ACTION_SELECTION_TYPE == ActionSelection.BOLTZMANN:
@@ -187,6 +186,7 @@ class SingleAgentController:
             return None
 
         batch = self.replay_buffer.sample(self.config.BATCH_SIZE)
+        batch_size = len(batch.done)
 
         obs_t_batch_np = np.array([obs[0] for obs in batch.obs_t])
         obs_tp1_batch_np = np.array([obs[0] for obs in batch.obs_tp1])
@@ -227,6 +227,15 @@ class SingleAgentController:
         self_loss = F.mse_loss(predicted_reward.squeeze(), curiosity_reward.detach())
         self_loss.backward()
         self.optimizer_self.step()
+                # Visualization
+        if self.current_step  % self.config.VAE_VISUALIZE_AFTER_STEPS == 0:
+             visualize_path = os.path.join(self.config.LOG_DIR, "vae_reconstructions")
+             visualize_vae_reconstruction(obs_t_tensor, recon_x.detach(), self.current_step, save_dir=visualize_path)
+
+        if self.current_step  % self.config.RNN_VISUALIZE_AFTER_STEPS == 0:
+            i=0
+            rnn_pred_save_dir = os.path.join(self.config.LOG_DIR, "rnn_predictions")
+            visualize_rnn_prediction(obs_tp1_tensor[i*batch_size:(i+1)*batch_size], predicted_z_tp1_list[i].detach(), self.vae.decode, self.current_step, i, save_dir=rnn_pred_save_dir)
 
         return {
             'vae_loss': vae_loss.item(),

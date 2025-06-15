@@ -20,11 +20,16 @@ class Environment:
         self.agent_ids = []
         self.wall_ids = []
         # -- Define agent start configurations (extensible for more agents) --
-        self.agent_start_configs = [
-            {'pos': [-1.0, 0.0, 0.2], 'ori': p.getQuaternionFromEuler([0, 0, 0]), 'color': [0, 1, 0, 1]},       # Agent 0 (Green)
-            {'pos': [1.0, 0.0, 0.2], 'ori': p.getQuaternionFromEuler([0, 0, math.pi]), 'color': [0.5, 0, 1, 1]}, # Agent 1 (Purple)
-            # Add more agent configs here if needed
-        ]
+        if self.num_agents == 1:
+            self.agent_start_configs = [
+                {'pos': [0, 0.0, 0.2], 'ori': p.getQuaternionFromEuler([0, 0, 0]), 'color': [0, 1, 0, 1]},       # Agent 0 (Green)
+            ]
+        else:
+            self.agent_start_configs = [
+                {'pos': [-0.5, 0.0, 0.2], 'ori': p.getQuaternionFromEuler([0, 0, 0]), 'color': [0, 1, 0, 1]},       # Agent 0 (Green)
+                {'pos': [0.5, 0.0, 0.2], 'ori': p.getQuaternionFromEuler([0, 0, math.pi]), 'color': [0.5, 0, 1, 1]}, # Agent 1 (Purple)
+                # Add more agent configs here if needed
+            ]
         if self.num_agents > len(self.agent_start_configs):
             raise ValueError(f"Requested {self.num_agents} agents, but only {len(self.agent_start_configs)} start configurations are defined.")
 
@@ -46,7 +51,6 @@ class Environment:
             'right':        [0,    1.5,  0, 0],    # and positive vy for right
             'rotate_left':  [0,     0,   0, 2.5],
             'rotate_right': [0,     0,   0, -2.5],
-            'stop':         [0,     0,   0, 0],
         }
 
         # -- Initialize PyBullet --

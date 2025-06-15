@@ -69,6 +69,7 @@ def run(config):
         print("Starting simulation...")
         for step in range(config.MAX_STEPS):
             # 1. Choose actions using the controller's unified API
+            controller.current_step = step
             action_keys, action_arrays = controller.choose_actions(obs_t_list)
 
             # 2. Apply actions in the environment

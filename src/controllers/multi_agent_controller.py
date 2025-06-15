@@ -77,7 +77,6 @@ class MultiAgentController:
 
     def choose_actions(self, obs_list: list) -> (list, list): # type: ignore
         """Chooses actions for all agents based on the configured policy."""
-        self.current_step += 1
         action_keys_list = [None] * self.num_agents
         action_arrays_list = [None] * self.num_agents
 
@@ -194,11 +193,11 @@ class MultiAgentController:
             losses[f'rnn_loss_head_{i}'] = rnn_losses[i].item()
 
         # Visualization
-        if self.current_step % self.config.VAE_VISUALIZE_AFTER_STEPS == 0:
+        if self.current_step  % self.config.VAE_VISUALIZE_AFTER_STEPS == 0:
              visualize_path = os.path.join(self.config.LOG_DIR, "vae_reconstructions")
              visualize_vae_reconstruction(obs_t_tensor, recon_x.detach(), self.current_step, save_dir=visualize_path)
 
-        if self.current_step % self.config.RNN_VISUALIZE_AFTER_STEPS == 0:
+        if self.current_step  % self.config.RNN_VISUALIZE_AFTER_STEPS == 0:
             for i in range(self.num_agents):
                  rnn_pred_save_dir = os.path.join(self.config.LOG_DIR, "rnn_predictions")
                  visualize_rnn_prediction(obs_tp1_tensor[i*batch_size:(i+1)*batch_size], predicted_z_tp1_list[i].detach(), self.vae.decode, self.current_step, i, save_dir=rnn_pred_save_dir)
