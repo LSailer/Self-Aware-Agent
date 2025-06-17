@@ -36,7 +36,7 @@ class Environment:
         # -- Define object start positions --
         self.cylinder_start_pos = [2.4, 0.2, 0.5]
         self.cylinder_start_ori = [0, 0, 0, 1]
-        self.disk_start_pos = [0.0, 2.0, 0.5]
+        self.disk_start_pos = [0.0, 2.0, 0]
         self.disk_start_ori = [0, 0, 0, 1]
         self.pyramid_start_pos = [-2.0, -0.5, 0.0]
         self.pyramid_start_ori = [0, 0, 0, 1]
@@ -105,11 +105,11 @@ class Environment:
             baseOrientation=orientation
         )
 
-    def _create_cylinder(self):
-        return p.createMultiBody(baseMass=0.01, baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.7, height=0.1), baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.7, length=0.1, rgbaColor=[1, 0, 0, 1]), basePosition=self.cylinder_start_pos, baseOrientation=self.cylinder_start_ori)
-
     def _create_disk(self):
-        return p.createMultiBody(baseMass=0.01, baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0), baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.2, length=1.0, rgbaColor=[0, 0, 1, 1]), basePosition=self.disk_start_pos, baseOrientation=self.disk_start_ori)
+        return p.createMultiBody(baseMass=0.01, baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.7, height=0.1), baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.7, length=0.1, rgbaColor=[0, 0, 1, 1]), basePosition=self.cylinder_start_pos, baseOrientation=self.cylinder_start_ori)
+
+    def _create_cylinder(self):
+        return p.createMultiBody(baseMass=0.01, baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0), baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.2, length=1.0, rgbaColor=[1, 0, 0, 1]), basePosition=self.disk_start_pos, baseOrientation=self.disk_start_ori)
 
     def _create_pyramid(self):
         urdf_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'pyramid.urdf')
