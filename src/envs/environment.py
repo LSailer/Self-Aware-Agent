@@ -36,7 +36,7 @@ class Environment:
         # -- Define object start positions --
         self.cylinder_start_pos = [2.4, 0.2, 0.5]
         self.cylinder_start_ori = [0, 0, 0, 1]
-        self.disk_start_pos = [0.0, 2.0, 0.5]
+        self.disk_start_pos = [0.0, 2.0, 0]
         self.disk_start_ori = [0, 0, 0, 1]
         self.pyramid_start_pos = [-2.0, -0.5, 0.0]
         self.pyramid_start_ori = [0, 0, 0, 1]
