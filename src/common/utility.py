@@ -83,9 +83,9 @@ def visualize_rnn_prediction(actual_next_frames, rnn_predicted_latent_z, vae_dec
     if num_examples_to_show <= 0:
         print(f"Warning: num_examples_to_show is zero for RNN prediction viz for Agent {agent_id}.")
         return
-
-    actual_frames_subset = actual_next_frames[:num_examples_to_show]
-    predicted_latents_subset = rnn_predicted_latent_z[:num_examples_to_show]
+    target_device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    actual_frames_subset = actual_next_frames[:num_examples_to_show].to(target_device)
+    predicted_latents_subset = rnn_predicted_latent_z[:num_examples_to_show].to(target_device)
 
     # Decode the RNN's predicted latent states using the VAE's decoder
     with torch.no_grad(): # No gradients needed for visualization
@@ -99,7 +99,7 @@ def visualize_rnn_prediction(actual_next_frames, rnn_predicted_latent_z, vae_dec
             return
             
     # Ensure decoded predictions are on CPU for plotting
-    decoded_rnn_predictions = decoded_rnn_predictions.cpu()
+    decoded_rnn_predictions = decoded_rnn_predictions.to(target_device)
 
     if decoded_rnn_predictions.shape != actual_frames_subset.shape:
         print(f"Warning: Shape mismatch for Agent {agent_id} RNN viz. Actuals: {actual_frames_subset.shape}, Decoded Preds: {decoded_rnn_predictions.shape}")
@@ -111,7 +111,7 @@ def visualize_rnn_prediction(actual_next_frames, rnn_predicted_latent_z, vae_dec
     comparison = torch.cat([actual_frames_subset, decoded_rnn_predictions])
 
     try:
-        grid = vutils.make_grid(comparison, nrow=num_examples_to_show, padding=2, normalize=False)
+        grid = vutils.make_grid(comparison.cpu(), nrow=num_examples_to_show, padding=2, normalize=False)
     except Exception as e:
         print(f"Error creating RNN prediction visualization grid for Agent {agent_id} with vutils.make_grid: {e}")
         return
