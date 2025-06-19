@@ -45,15 +45,14 @@ class Environment:
 
         # -- Action Map (identical for all agents) --
         self.action_map = {
-            'forward':      [1.5,  0,    0, 0],    # Target linear velocity (local x, y), target angular velocity (world z)
-            'backward':     [-1.5, 0,    0, 0],
-            'left':         [0,   -1.5,  0, 0],    # Using your convention of negative vy for left
-            'right':        [0,    1.5,  0, 0],    # and positive vy for right
-            'rotate_left':  [0,     0,   0, 2.5],
-            'rotate_right': [0,     0,   0, -2.5],
-            'stop':         [0,     0,   0, 0],
+            'forward':      [50.0,  0,    0, 0],
+            'backward':     [-50.0, 0,    0, 0],
+            'left':         [0,    -50.0, 0, 0],
+            'right':        [0,     50.0, 0, 0],
+            'rotate_left':  [0,     0,    0, 5.0],
+            'rotate_right': [0,     0,    0, -5.0],
+            'stop':         [0,     0,    0, 0],
         }
-
         # -- Initialize PyBullet --
         if self.use_gui:
             self.physics_client = p.connect(p.GUI)
@@ -219,24 +218,15 @@ class Environment:
         # Get target local linear velocities and world angular velocity
         target_vx_local, target_vy_local, _, target_wz_world = self.action_map[action_key]
 
-        _, ori = p.getBasePositionAndOrientation(agent_id)
+        pos, ori = p.getBasePositionAndOrientation(agent_id)
         mat = p.getMatrixFromQuaternion(ori)
         
-        # Get agent's local axes from rotation matrix
-        fwd = np.array([mat[0], mat[1], mat[2]])
-        right = np.array([mat[3], mat[4], mat[5]])
+        fwd = np.array(mat[:3]); right = np.array(mat[3:6])
+        if target_vx_local or target_vy_local:
+            p.applyExternalForce(agent_id, -1, (fwd*target_vx_local + right*target_vy_local).tolist(), pos, p.WORLD_FRAME)
+        if target_wz_world:
+            p.resetBaseVelocity(agent_id, angularVelocity=[0, 0, target_wz_world])
 
-        # Convert local target velocity to world frame
-        target_linear_velocity_world = fwd * target_vx_local + right * target_vy_local
-        
-        # Get current velocity to preserve z-component (for gravity)
-        current_linear_velocity, _ = p.getBaseVelocity(agent_id)
-        target_linear_velocity_world[2] = current_linear_velocity[2]
-
-        # Set the new velocity
-        p.resetBaseVelocity(agent_id, 
-                            linearVelocity=target_linear_velocity_world.tolist(), 
-                            angularVelocity=[0, 0, target_wz_world])
     
     def clamp_velocity(self, agent_id, max_linear_velocity=2.0, max_angular_velocity=5.0):
         """Limit the linear and angular velocity of the specified agent."""
