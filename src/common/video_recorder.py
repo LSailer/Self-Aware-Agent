@@ -11,9 +11,6 @@ class VideoRecorder:
         self.output_resolution = (int(resolution[0]), int(resolution[1])) 
         self.fps = fps
         
-        # Ensure the directory for the file exists
-        # If filename includes a path, os.path.dirname will extract it.
-        # If it's just a filename, os.path.dirname will be empty, so makedirs won't fail.
         file_dir = os.path.dirname(filename)
         if file_dir and not os.path.exists(file_dir): # Only create if dirname is not empty
             os.makedirs(file_dir, exist_ok=True)

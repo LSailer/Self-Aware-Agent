@@ -45,7 +45,7 @@ def run(config):
     recorders = [
         VideoRecorder(
             filename=os.path.join(config.LOG_DIR, f"agent_{i}_video.mp4"),
-            resolution=(480, 640) # Using original resolution for clarity
+            resolution=(640,480)
         ) for i in range(config.NUM_AGENTS)
     ]
 
