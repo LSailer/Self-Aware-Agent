@@ -41,7 +41,7 @@ def visualize_vae_reconstruction(originals, reconstructions, step, save_dir="log
 
     plt.figure(figsize=(max(10, num_examples_to_show * 1.5), 4))
     try:
-        plt.imshow(np.transpose(grid.numpy(), (1, 2, 0)))
+        plt.imshow(np.transpose(grid.cpu().numpy(), (1, 2, 0)))
     except Exception as e:
         print(f"Error during plt.imshow for VAE visualization: {e}")
         plt.close()
