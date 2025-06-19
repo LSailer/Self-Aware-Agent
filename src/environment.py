@@ -72,7 +72,7 @@ class Environment:
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.7, height=0.1),
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.7, length=0.1,
                                                      rgbaColor=[0, 0, 1, 1]),
-            basePosition=self.cylinder_start_pos
+            basePosition=self.disk_start_pos
         )
 
         self.cylinder_id = p.createMultiBody(
@@ -80,7 +80,7 @@ class Environment:
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0),
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.2, length=1.0,
                                                      rgbaColor=[1, 0, 0, 1]),
-            basePosition=self.disk_start_pos
+            basePosition=self.cylinder_start_pos
         )
 
         base_dir = os.path.dirname(os.path.realpath(__file__))
