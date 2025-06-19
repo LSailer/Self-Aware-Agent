@@ -8,7 +8,7 @@ from envs.environment import Environment
 from controllers.single_agent_controller import SingleAgentController
 from controllers.multi_agent_controller import MultiAgentController
 from common.metric_logger import MetricLogger
-from common.video_recorder import VideoRecorder
+from common._video_recorder import VideoRecorder
 
 def check_agent_object_interaction(env, agent_id):
     """Checks if a specific agent is in contact with any object."""
