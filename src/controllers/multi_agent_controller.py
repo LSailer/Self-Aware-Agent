@@ -144,6 +144,8 @@ class MultiAgentController:
         
         obs_t_tensor = torch.stack([self.transform(img) for img in obs_t_all_agents]).to(self.device)
         obs_tp1_tensor = torch.stack([self.transform(img) for img in obs_tp1_all_agents]).to(self.device)
+
+        
         
         actions_t_list = [torch.tensor(np.array([a[i] for a in batch.actions_t]), dtype=torch.float32).to(self.device) for i in range(self.num_agents)]
         action_t_combined = torch.cat(actions_t_list, dim=1)
@@ -198,9 +200,24 @@ class MultiAgentController:
              visualize_vae_reconstruction(obs_t_tensor, recon_x.detach(), self.current_step, save_dir=visualize_path)
 
         if self.current_step  % self.config.RNN_VISUALIZE_AFTER_STEPS == 0:
+            rnn_pred_save_dir = os.path.join(self.config.LOG_DIR, "rnn_predictions")
+
+            # Stelle sicher, dass batch_size * num_agents == 16 (oder entsprechende Gesamtzahl)
             for i in range(self.num_agents):
-                 rnn_pred_save_dir = os.path.join(self.config.LOG_DIR, "rnn_predictions")
-                 visualize_rnn_prediction(obs_tp1_tensor[i*batch_size:(i+1)*batch_size], predicted_z_tp1_list[i].detach(), self.vae.decode, self.current_step, i, save_dir=rnn_pred_save_dir)
+                # Wähle jedes i-te Bild, beginnend bei i
+                obs_for_agent_i = obs_tp1_tensor[i*batch_size:(i+1)*batch_size]           # z.B. i=0 → 0,2,4,...
+                obs_for_agent_i2= obs_for_agent_i[i::self.num_agents]
+                z_for_agent_i = predicted_z_tp1_list[i].detach()[i::self.num_agents]  # falls vorher kombiniert
+
+                visualize_rnn_prediction(
+                    obs_for_agent_i2,
+                    z_for_agent_i,
+                    self.vae.decode,
+                    self.current_step,
+                    i,
+                    save_dir=rnn_pred_save_dir
+                )
+                
 
 
         # Return loss dictionary for logging

@@ -19,6 +19,7 @@ def visualize_vae_reconstruction(originals, reconstructions, step, save_dir="log
         save_dir (str): Directory to save the image grid.
         num_examples (int): Number of image pairs to display.
     """
+
     if originals.shape[0] == 0 or reconstructions.shape[0] == 0:
         print("Warning: No images provided for VAE visualization.")
         return

@@ -66,7 +66,7 @@ class Environment:
         p.configureDebugVisualizer(p.COV_ENABLE_DEPTH_BUFFER_PREVIEW, 0)
         p.configureDebugVisualizer(p.COV_ENABLE_SEGMENTATION_MARK_PREVIEW, 0)
         p.setTimeStep(1.0/60.0)
-
+        p.setGravity(0, 0, -9.8)
         p.setRealTimeSimulation(0)
         p.setPhysicsEngineParameter(enableConeFriction=0)
         p.setPhysicsEngineParameter(numSolverIterations=10)
