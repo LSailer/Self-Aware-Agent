@@ -12,7 +12,7 @@ MAX_STEPS = 200
 BATCH_SIZE = 16
 UPDATE_EVERY_N_STEPS = 4
 REPLAY_BUFFER_SIZE = 10000
-USE_GUI = False # Set to True to watch the simulation in PyBullet's GUI
+USE_GUI = True # Set to True to watch the simulation in PyBullet's GUI
 
 # --- Action Selection Parameters ---
 # Options: "epsilon_greedy", "boltzmann", "ucb"
