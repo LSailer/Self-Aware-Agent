@@ -62,7 +62,14 @@ class Environment:
         # -- Configure simulation settings --
         p.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)
         p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_RGB_BUFFER_PREVIEW, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_DEPTH_BUFFER_PREVIEW, 0)
+        p.configureDebugVisualizer(p.COV_ENABLE_SEGMENTATION_MARK_PREVIEW, 0)
         p.setTimeStep(1.0/60.0)
+
+        p.setRealTimeSimulation(0)
+        p.setPhysicsEngineParameter(enableConeFriction=0)
+        p.setPhysicsEngineParameter(numSolverIterations=10)
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
 
         # -- Set up environment colors --
@@ -70,7 +77,7 @@ class Environment:
 
         # -- Create all objects and agents --
         self._create_environment_objects()
-        self._setup_dynamics()
+        #self._setup_dynamics()
 
     def _create_environment_objects(self):
         """Create all environment objects (plane, agents, objects, walls)."""
@@ -106,41 +113,92 @@ class Environment:
         )
 
     def _create_cylinder(self):
-        return p.createMultiBody(baseMass=0.01, baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0), baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.2, length=1.0, rgbaColor=[1, 0, 0, 1]), basePosition=self.cylinder_start_pos, baseOrientation=self.cylinder_start_ori)
-
+        return p.createMultiBody(
+            baseMass=0.01,
+            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0),
+            baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.2, length=1.0,
+                                                     rgbaColor=[1, 0, 0, 1]),
+            basePosition=self.cylinder_start_pos
+        )
     def _create_disk(self):
-        return p.createMultiBody(baseMass=0.01, baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.7, height=0.1), baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.7, length=0.1, rgbaColor=[0, 0, 1, 1]), basePosition=self.disk_start_pos, baseOrientation=self.disk_start_ori)
+        return p.createMultiBody(
+            baseMass=0.01,
+            baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.7, height=0.1),
+            baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.7, length=0.1,
+                                                    rgbaColor=[0, 0, 1, 1]),
+            basePosition=self.disk_start_pos
+        )
 
     def _create_pyramid(self):
         urdf_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'pyramid.urdf')
         return p.loadURDF(urdf_path, basePosition=self.pyramid_start_pos, baseOrientation=self.pyramid_start_ori)
 
     def _create_sphere(self):
-        return p.createMultiBody(baseMass=0.01, baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_SPHERE, radius=0.3), baseVisualShapeIndex=p.createVisualShape(p.GEOM_SPHERE, radius=0.3, rgbaColor=[1.0, 1.0, 0.0, 1.0]), basePosition=self.sphere_start_pos, baseOrientation=self.sphere_start_ori)
-
+        sphere_radius = 0.3
+        sphere_mass   = 0.01
+        sphere_collision = p.createCollisionShape(
+            p.GEOM_SPHERE,
+            radius=sphere_radius
+        )
+        sphere_visual = p.createVisualShape(
+            p.GEOM_SPHERE,
+            radius=sphere_radius,
+            rgbaColor=[1.0, 1.0, 0.0, 1.0]  # Gelb (R=1,G=1,B=0,A=1)
+        )
+        return p.createMultiBody(
+            baseMass=sphere_mass,
+            baseCollisionShapeIndex=sphere_collision,
+            baseVisualShapeIndex=sphere_visual,
+            basePosition=self.sphere_start_pos,
+            baseOrientation=self.sphere_start_ori
+        )
     def _create_room(self):
-        wall_thickness, wall_height, wall_length = 0.2, 1.0, 7.5
-        walls = [{'pos': [0, wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]}, {'pos': [0, -wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]}, {'pos': [-wall_length/2, 0, wall_height/2], 'size': [wall_thickness/2, wall_length/2, wall_height/2]}, {'pos': [wall_length/2, 0, wall_height/2], 'size': [wall_thickness/2, wall_length/2, wall_height/2]}]
-        texture_id = p.loadTexture(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'steinwand.jpg'))
+        wall_thickness = 0.2
+        wall_height = 1.0
+        wall_length = 7.5
+        walls = [
+            {'pos': [0,  wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]},
+            {'pos': [0, -wall_length/2, wall_height/2], 'size': [wall_length/2, wall_thickness/2, wall_height/2]},
+            {'pos': [-wall_length/2, 0, wall_height/2],  'size': [wall_thickness/2, wall_length/2, wall_height/2]},
+            {'pos': [ wall_length/2, 0, wall_height/2], 'size': [wall_thickness/2, wall_length/2, wall_height/2]},
+        ]
+        self.wall_ids = []
+        base_dir = os.path.dirname(os.path.realpath(__file__))
+        steinwand_path = os.path.join(base_dir, 'steinwand.jpg')
+        texture_id = p.loadTexture(steinwand_path) 
         for w in walls:
-            wid = p.createMultiBody(baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_BOX, halfExtents=w['size']), baseVisualShapeIndex=p.createVisualShape(p.GEOM_BOX, halfExtents=w['size'], flags=p.VISUAL_SHAPE_DOUBLE_SIDED), basePosition=w['pos'], baseMass=0)
+            cid = p.createCollisionShape(p.GEOM_BOX, halfExtents=w['size'])
+
+            # rgbaColor brauchst du nicht, wenn du eine Textur nutzt
+            vid = p.createVisualShape(
+                p.GEOM_BOX,
+                halfExtents=w['size'],
+                flags=p.VISUAL_SHAPE_DOUBLE_SIDED
+            )
+
+            wid = p.createMultiBody(
+                baseCollisionShapeIndex=cid,
+                baseVisualShapeIndex=vid,
+                basePosition=w['pos'],
+                baseMass=0
+            )
+
+            # Wechsle die Textur nach dem Erzeugen
             p.changeVisualShape(wid, -1, textureUniqueId=texture_id)
+
             self.wall_ids.append(wid)
 
     def _setup_dynamics(self):
         """Set up physics dynamics for all objects."""
         p.setGravity(0, 0, -9.8)
-        for agent_id in self.agent_ids:
-            p.changeDynamics(agent_id, -1, lateralFriction=1.0, rollingFriction=0.005, spinningFriction=0.005, restitution=0.0, angularDamping=0.5, linearDamping=0.5)
-        # Agent dynamics: Make the agent slightly bouncy
-        for agent_id in self.agent_ids:
-            p.changeDynamics(
-                agent_id, -1,
-                lateralFriction=0.9,
-                restitution=0.4,
-                angularDamping=0.5,
-                linearDamping=0.5
-            )
+        # for agent_id in self.agent_ids: Without the physics the agent are moving
+        #         p.changeDynamics(
+        #             agent_id, -1,
+        #             lateralFriction=0.9,
+        #             restitution=0.4,
+        #             angularDamping=0.5,
+        #             linearDamping=0.0  
+        #         )
 
         # Movable object dynamics: Make them bouncy and have some friction
         movable_objects = [self.cylinder_id, self.disk_id, self.pyramid_id, self.sphere_id]
@@ -173,25 +231,57 @@ class Environment:
             p.resetBaseVelocity(obj_id, linearVelocity=[0, 0, 0], angularVelocity=[0, 0, 0])
 
     def get_camera_image(self, agent_id):
-        """Get camera image from a specific agent's perspective."""
-        if agent_id not in self.agent_ids:
-            raise ValueError(f"Invalid agent_id: {agent_id}. Valid IDs are {self.agent_ids}")
-
-        pos, ori = p.getBasePositionAndOrientation(agent_id)
-        yaw = p.getEulerFromQuaternion(ori)[2]
+        agent_pos, agent_ori = p.getBasePositionAndOrientation(agent_id)
+        euler = p.getEulerFromQuaternion(agent_ori)
+        yaw = euler[2]
         forward = np.array([math.cos(yaw), math.sin(yaw), 0])
-        eye = np.array(pos) + np.array([0.0, 0.0, 0.2])
+        eye    = np.array(agent_pos) + np.array([0.0, 0.0, 0.2])
         target = eye + forward * 2.0
 
-        view_matrix = p.computeViewMatrix(cameraEyePosition=eye, cameraTargetPosition=target, cameraUpVector=[0, 0, 1])
-        proj_matrix = p.computeProjectionMatrixFOV(fov=90, aspect=640/480, nearVal=0.1, farVal=10.0)
+        view_matrix = p.computeViewMatrix(cameraEyePosition=eye.tolist(),
+                                          cameraTargetPosition=target.tolist(),
+                                          cameraUpVector=[0, 0, 1])
+        proj_matrix = p.computeProjectionMatrixFOV(fov=90,
+                                                   aspect=640/480,
+                                                   nearVal=0.1,
+                                                   farVal=10.0)
         renderer = p.ER_BULLET_HARDWARE_OPENGL if self.use_gui else p.ER_TINY_RENDERER
+        width, height, rgb_img, depth_buffer, seg_buffer = p.getCameraImage(
+            width=640, height=480,
+            viewMatrix=view_matrix,
+            projectionMatrix=proj_matrix,
+            renderer=renderer
+        )
 
-        _, _, rgb_img, _, seg_buffer = p.getCameraImage(width=640, height=480, viewMatrix=view_matrix, projectionMatrix=proj_matrix, renderer=renderer)
-        rgb = np.array(rgb_img, dtype=np.uint8).reshape(480, 640, 4)[:, :, :3]
-        seg = np.array(seg_buffer, dtype=np.int32).reshape(480, 640)
-        rgb[seg < 0] = self.sky_color # Apply background color
+        rgba = np.array(rgb_img,   dtype=np.uint8).reshape(height, width, 4)
+        seg  = np.array(seg_buffer, dtype=np.int32).reshape(height, width)
+        rgb  = rgba[:, :, :3]
+
+        bg_mask = (seg < 0)
+        rgb[bg_mask] = self.sky_color
+
         return rgb
+
+    # def get_camera_image(self, agent_id):
+    #     """Get camera image from a specific agent's perspective."""
+    #     if agent_id not in self.agent_ids:
+    #         raise ValueError(f"Invalid agent_id: {agent_id}. Valid IDs are {self.agent_ids}")
+
+    #     pos, ori = p.getBasePositionAndOrientation(agent_id)
+    #     yaw = p.getEulerFromQuaternion(ori)[2]
+    #     forward = np.array([math.cos(yaw), math.sin(yaw), 0])
+    #     eye = np.array(pos) + np.array([0.0, 0.0, 0.2])
+    #     target = eye + forward * 2.0
+
+    #     view_matrix = p.computeViewMatrix(cameraEyePosition=eye, cameraTargetPosition=target, cameraUpVector=[0, 0, 1])
+    #     proj_matrix = p.computeProjectionMatrixFOV(fov=90, aspect=640/480, nearVal=0.1, farVal=10.0)
+    #     renderer = p.ER_BULLET_HARDWARE_OPENGL if self.use_gui else p.ER_TINY_RENDERER
+
+    #     _, _, rgb_img, _, seg_buffer = p.getCameraImage(width=640, height=480, viewMatrix=view_matrix, projectionMatrix=proj_matrix, renderer=renderer)
+    #     rgb = np.array(rgb_img, dtype=np.uint8).reshape(480, 640, 4)[:, :, :3]
+    #     seg = np.array(seg_buffer, dtype=np.int32).reshape(480, 640)
+    #     rgb[seg < 0] = self.sky_color # Apply background color
+    #     return rgb
 
     def get_state(self):
         """Get the current state of all agents and objects in the environment."""
@@ -207,26 +297,18 @@ class Environment:
             state['objects'][obj_name] = {"position": pos, "orientation": ori}
         return state
 
-    def apply_action(self, agent_id, action_key):
+    def apply_action(self, agent_id, action):
         """Apply an action from the action_map to the specified agent using velocity control."""
-        if agent_id not in self.agent_ids:
-            raise ValueError(f"Invalid agent_id: {agent_id}. Valid IDs are {self.agent_ids}")
-        if action_key not in self.action_map:
-            print(f"Warning: Action '{action_key}' not in action_map. No action taken.")
+        if action not in self.action_map:
             return
-
-        # Get target local linear velocities and world angular velocity
-        target_vx_local, target_vy_local, _, target_wz_world = self.action_map[action_key]
-
+        vx, vy, _, tz = self.action_map[action]
         pos, ori = p.getBasePositionAndOrientation(agent_id)
         mat = p.getMatrixFromQuaternion(ori)
-        
         fwd = np.array(mat[:3]); right = np.array(mat[3:6])
-        if target_vx_local or target_vy_local:
-            p.applyExternalForce(agent_id, -1, (fwd*target_vx_local + right*target_vy_local).tolist(), pos, p.WORLD_FRAME)
-        if target_wz_world:
-            p.resetBaseVelocity(agent_id, angularVelocity=[0, 0, target_wz_world])
-
+        if vx or vy:
+            p.applyExternalForce(agent_id, -1, (fwd*vx + right*vy).tolist(), pos, p.WORLD_FRAME)
+        if tz:
+            p.resetBaseVelocity(agent_id, angularVelocity=[0, 0, tz])
     
     def clamp_velocity(self, agent_id, max_linear_velocity=2.0, max_angular_velocity=5.0):
         """Limit the linear and angular velocity of the specified agent."""
