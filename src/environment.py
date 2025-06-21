@@ -26,7 +26,7 @@ class Environment:
             'right':        [0,     50.0, 0, 0],
             'rotate_left':  [0,     0,    0, 5.0],
             'rotate_right': [0,     0,    0, -5.0],
-            #'stop':         [0,     0,    0, 0],
+            'stop':         [0,     0,    0, 0],
         }
 
         if self.use_gui:
@@ -72,7 +72,7 @@ class Environment:
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.7, height=0.1),
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.7, length=0.1,
                                                      rgbaColor=[0, 0, 1, 1]),
-            basePosition=self.cylinder_start_pos
+            basePosition=self.disk_start_pos
         )
 
 
@@ -81,7 +81,7 @@ class Environment:
             baseCollisionShapeIndex=p.createCollisionShape(p.GEOM_CYLINDER, radius=0.2, height=1.0),
             baseVisualShapeIndex=p.createVisualShape(p.GEOM_CYLINDER, radius=0.2, length=1.0,
                                                      rgbaColor=[1, 0, 0, 1]),
-            basePosition=self.disk_start_pos
+            basePosition=self.cylinder_start_pos
         )
 
 
