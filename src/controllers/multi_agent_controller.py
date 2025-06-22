@@ -64,6 +64,12 @@ class MultiAgentController:
             T.ToPILImage(), T.Resize((64, 64)), T.ToTensor(),
         ])
 
+        self.action_counts = [
+            {key: 1 for key in self.action_keys} for _ in range(self.num_agents)
+        ]
+        self.total_steps = [1 for _ in range(self.num_agents)]
+
+
 
 
     

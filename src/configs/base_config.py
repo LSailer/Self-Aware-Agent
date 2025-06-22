@@ -16,8 +16,8 @@ USE_GUI = False # Set to True to watch the simulation in PyBullet's GUI
 
 # --- Action Selection Parameters ---
 # Options: "epsilon_greedy", "boltzmann", "ucb"
-ACTION_SELECTION_TYPE = ActionSelection.BOLTZMANN
-EPSILON_GREEDY = 0.3  # Epsilon for exploration in epsilon-greedy
+ACTION_SELECTION_TYPE = ActionSelection.EPSILON_GREEDY
+EPSILON_GREEDY = 0.2  # Epsilon for exploration in epsilon-greedy
 TEMPERATURE = 1.5     # Temperature for Boltzmann exploration
 UCB_C = 1.0           # Exploration constant for UCB
 
