@@ -2,7 +2,7 @@
 #SBATCH --job-name=RunSimulation
 #SBATCH --output=logs/Logs%j.out
 #SBATCH --error=logs/Logs%j.err
-#SBATCH --time=0:10:00
+#SBATCH --time=00:30:00
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=127G

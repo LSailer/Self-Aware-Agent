@@ -16,9 +16,9 @@ USE_GUI = False # Set to True to watch the simulation in PyBullet's GUI
 
 # --- Action Selection Parameters ---
 # Options: "epsilon_greedy", "boltzmann", "ucb"
-ACTION_SELECTION_TYPE = ActionSelection.EPSILON_GREEDY
+ACTION_SELECTION_TYPE = ActionSelection.BOLTZMANN
 EPSILON_GREEDY = 0.3  # Epsilon for exploration in epsilon-greedy
-TEMPERATURE = 1.0     # Temperature for Boltzmann exploration
+TEMPERATURE = 1.5     # Temperature for Boltzmann exploration
 UCB_C = 1.0           # Exploration constant for UCB
 
 # --- Model Hyperparameters ---
@@ -34,5 +34,5 @@ LEARNING_RATE_SELF = 0.001
 
 # --- Logging and Visualization ---
 LOG_DIR_BASE = "logs"
-VAE_VISUALIZE_AFTER_STEPS = 100 # How often to save VAE reconstruction images
-RNN_VISUALIZE_AFTER_STEPS = 100 # How often to save RNN prediction images
+VAE_VISUALIZE_AFTER_STEPS = 200 # How often to save VAE reconstruction images
+RNN_VISUALIZE_AFTER_STEPS = 200 # How often to save RNN prediction images

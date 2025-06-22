@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -63,6 +64,11 @@ class MultiAgentController:
             T.ToPILImage(), T.Resize((64, 64)), T.ToTensor(),
         ])
 
+
+
+    
+
+
     def set_initial_state(self, initial_obs_list: list):
         """Sets the initial latent states z_t from the first observations."""
         initial_obs_tensors = torch.stack([self.transform(obs) for obs in initial_obs_list]).to(self.device)
@@ -75,35 +81,84 @@ class MultiAgentController:
         self.h_t = self.rnn.init_hidden(batch_size=1, device=self.device)
         print("MultiAgentController initial state set.")
 
-    def choose_actions(self, obs_list: list) -> (list, list): # type: ignore
-        """Chooses actions for all agents based on the configured policy."""
-        action_keys_list = [None] * self.num_agents
-        action_arrays_list = [None] * self.num_agents
-
-        # Correctly pass the 3D hidden state tensor (h from (h,c) tuple)
-        raw_h_tensor = self.h_t[0]
-
-        for i in range(self.num_agents):
-            self.self_models[i].eval()
+    def _choose_action_epsilon_greedy(self, agent_idx, z_t, h_t):
+        """Epsilon-Greedy action selection for one agent."""
+        if np.random.rand() < self.config.EPSILON_GREEDY:
+            return np.random.randint(len(self.action_keys))
+        else:
+            self.self_models[agent_idx].eval()
             with torch.no_grad():
                 rewards = []
                 for action_arr in self.action_arrays:
                     action_tensor = torch.tensor(action_arr, dtype=torch.float32).unsqueeze(0).to(self.device)
-                    # Pass the full hidden state tensor to the self model
-                    pred_reward = self.self_models[i](self.z_t_all[i], raw_h_tensor, action_tensor)
+                    pred_reward = self.self_models[agent_idx](z_t, h_t, action_tensor)
                     rewards.append(pred_reward.item())
-            self.self_models[i].train()
-            
-            # Simple epsilon-greedy for now, can be expanded like the single-agent controller
-            if self.config.ACTION_SELECTION_TYPE == ActionSelection.EPSILON_GREEDY and random.random() < self.config.EPSILON_GREEDY:
-                action_idx = random.randrange(len(self.action_keys))
-            else:
                 action_idx = np.argmax(rewards)
+            self.self_models[agent_idx].train()
+            return action_idx
+
+
+    def _choose_action_boltzmann(self, agent_idx, z_t, h_t):
+        """Boltzmann (softmax) action selection for one agent."""
+        self.self_models[agent_idx].eval()
+        with torch.no_grad():
+            reward_values = []
+            for action_arr in self.action_arrays:
+                action_tensor = torch.tensor(action_arr, dtype=torch.float32).unsqueeze(0).to(self.device)
+                pred_reward = self.self_models[agent_idx](z_t, h_t, action_tensor)
+                reward_values.append(pred_reward.item())
+
+            reward_tensor = torch.tensor(reward_values, dtype=torch.float32)
+            probs = F.softmax(reward_tensor / self.config.TEMPERATURE, dim=0).cpu().numpy()
+            action_idx = np.random.choice(len(self.action_keys), p=probs)
+        self.self_models[agent_idx].train()
+        return action_idx
+
+        
+    def _choose_action_ucb(self, agent_idx, z_t, h_t):
+        self.self_models[agent_idx].eval()
+        with torch.no_grad():
+            ucb_scores = []
+            for i, action_arr in enumerate(self.action_arrays):
+                action_tensor = torch.tensor(action_arr, dtype=torch.float32).unsqueeze(0).to(self.device)
+                predicted_reward = self.self_models[agent_idx](z_t, h_t, action_tensor).item()
+                count = self.action_counts[agent_idx][self.action_keys[i]]
+                bonus = self.config.UCB_C * math.sqrt(math.log(self.total_steps[agent_idx] + 1) / count)
+                ucb_scores.append(predicted_reward + bonus)
+
+            action_idx = np.argmax(ucb_scores)
+        
+        self.action_counts[agent_idx][self.action_keys[action_idx]] += 1
+        self.total_steps[agent_idx] += 1
+        self.self_models[agent_idx].train()
+        return action_idx
+
+    
+    def choose_actions(self, obs_list: list):
+        """Chooses actions for all agents based on the configured policy."""
+        action_keys_list = [None] * self.num_agents
+        action_arrays_list = [None] * self.num_agents
+
+        h_t = self.h_t[0]  # LSTM hidden state
+
+        for i in range(self.num_agents):
+            z_t = self.z_t_all[i]
+            if self.config.ACTION_SELECTION_TYPE == ActionSelection.EPSILON_GREEDY:
+                action_idx = self._choose_action_epsilon_greedy(i, z_t, h_t)
+            elif self.config.ACTION_SELECTION_TYPE == ActionSelection.BOLTZMANN:
+                action_idx = self._choose_action_boltzmann(i, z_t, h_t)
+            elif self.config.ACTION_SELECTION_TYPE == ActionSelection.UCB:
+                action_idx = self._choose_action_ucb(i, z_t, h_t)
+            else:
+                raise ValueError(f"Unknown action selection type: {self.config.ACTION_SELECTION_TYPE}")
             
             action_keys_list[i] = self.action_keys[action_idx]
             action_arrays_list[i] = self.action_arrays[action_idx]
 
         return action_keys_list, action_arrays_list
+
+    
+    
 
     def store_experience(self, obs_t, actions_t, rewards_t, obs_tp1, done):
         """Adds an experience to the replay buffer."""
