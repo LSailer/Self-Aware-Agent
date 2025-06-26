@@ -164,8 +164,18 @@ class Environment:
         ]
         self.wall_ids = []
         base_dir = os.path.dirname(os.path.realpath(__file__))
-        steinwand_path = os.path.join(base_dir, 'steinwand.jpg')
-        texture_id = p.loadTexture(steinwand_path) 
+        steinwand_path1 = os.path.join(base_dir, 'steinwand1.jpg')
+        steinwand_path2 = os.path.join(base_dir, 'steinwand2.jpg')
+        steinwand_path3 = os.path.join(base_dir, 'steinwand3.jpg')
+        steinwand_path4 = os.path.join(base_dir, 'steinwand4.jpg')
+
+        texture_ids = [
+            p.loadTexture(steinwand_path1),
+            p.loadTexture(steinwand_path2),
+            p.loadTexture(steinwand_path3),
+            p.loadTexture(steinwand_path4)
+        ]
+        i=0
         for w in walls:
             cid = p.createCollisionShape(p.GEOM_BOX, halfExtents=w['size'])
 
@@ -184,8 +194,8 @@ class Environment:
             )
 
             # Wechsle die Textur nach dem Erzeugen
-            p.changeVisualShape(wid, -1, textureUniqueId=texture_id)
-
+            p.changeVisualShape(wid, -1, textureUniqueId=texture_ids[i])
+            i=i+1
             self.wall_ids.append(wid)
 
     def _setup_dynamics(self):

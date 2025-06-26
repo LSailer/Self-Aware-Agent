@@ -8,7 +8,7 @@ import from this file and override parameters as needed.
 from common.enums import ActionSelection
 
 # --- Simulation Parameters ---
-MAX_STEPS = 1000
+MAX_STEPS = 80000
 BATCH_SIZE = 16
 UPDATE_EVERY_N_STEPS = 4
 REPLAY_BUFFER_SIZE = 10000
@@ -34,5 +34,5 @@ LEARNING_RATE_SELF = 0.001
 
 # --- Logging and Visualization ---
 LOG_DIR_BASE = "logs"
-VAE_VISUALIZE_AFTER_STEPS = 200 # How often to save VAE reconstruction images
-RNN_VISUALIZE_AFTER_STEPS = 200 # How often to save RNN prediction images
+VAE_VISUALIZE_AFTER_STEPS = 5000 # How often to save VAE reconstruction images
+RNN_VISUALIZE_AFTER_STEPS = 5000 # How often to save RNN prediction images
