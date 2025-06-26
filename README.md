@@ -1,5 +1,5 @@
 
-#   Intrinsically Motivated Multi-Agent Simulation
+#   A Multi-Agent World Model with Self-Driven Curiosity Coordinated Exploration
 
 This project explores the fascinating world of intrinsically motivated agents within a dynamic, physics-based environment. It extends the foundational work of "Learning to Play with Intrinsically-Motivated, Self-Aware Agents" (https://github.com/neuroailab/learning_to_play.git) into a multi-agent setting, allowing for complex interactions and emergent behaviors
 
